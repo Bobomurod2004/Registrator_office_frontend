@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 
 type ThemeMode = 'light' | 'dark' | 'system'
 type Language = 'UZ' | 'EN' | 'RU'
@@ -12,7 +13,14 @@ const themeMode = ref<ThemeMode>((localStorage.getItem(THEME_KEY) as ThemeMode) 
 const language = ref<Language>((localStorage.getItem(LANG_KEY) as Language) || 'UZ')
 const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
 const route = useRoute()
+const router = useRouter()
+const authStore = useAuthStore()
 const showSearch = computed(() => route.name !== 'login')
+
+function handleLogout() {
+  authStore.logout()
+  void router.replace({ name: 'login' })
+}
 const isThemeOpen = ref(false)
 const isLanguageOpen = ref(false)
 
@@ -145,6 +153,24 @@ onBeforeUnmount(() => {
                 </button>
               </li>
             </ul>
+          </div>
+
+          <div v-if="authStore.isAuthenticated" class="header-user d-flex align-items-center gap-2">
+            <span class="user-chip">
+              <span class="user-avatar">{{ (authStore.session?.name || 'U').charAt(0) }}</span>
+              <span class="user-meta">
+                <strong>{{ authStore.session?.name }}</strong>
+                <small>{{ authStore.session?.role }}</small>
+              </span>
+            </span>
+            <button class="btn header-trigger logout-btn" @click="handleLogout">
+              <svg viewBox="0 0 24 24" role="presentation">
+                <path
+                  d="M16 13v-2H7V8l-5 4 5 4v-3h9ZM20 3h-9a2 2 0 0 0-2 2v3h2V5h9v14h-9v-3H9v3a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Z"
+                />
+              </svg>
+              Chiqish
+            </button>
           </div>
         </div>
       </div>
