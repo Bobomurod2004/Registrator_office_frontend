@@ -49,7 +49,7 @@ function startTypingLoop() {
       return
     }
 
-    const current = rotatingWords[wordIndex]
+    const current = rotatingWords[wordIndex] ?? ''
 
     if (!deleting) {
       charIndex += 1
