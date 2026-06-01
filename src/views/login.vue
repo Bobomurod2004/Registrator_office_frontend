@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import type { AuthMethod } from '@/stores/auth'
 import { useAuthStore } from '@/stores/auth'
 
 const authStore = useAuthStore()
+const router = useRouter()
 
 const rotatingWords = ['students', 'faculty', 'registrar staff', 'researchers']
 const typedWord = ref('')
@@ -33,9 +35,16 @@ const loginMethods = computed(() => [
   },
 ])
 
-function handleLogin(method: AuthMethod) {
-  void authStore.beginLogin(method)
+const username = ref('')
+const password = ref('')
+
+async function handleSubmit() {
+  const ok = await authStore.loginWithPassword(username.value, password.value)
+  if (ok) await router.push({ path: authStore.homePath })
 }
+
+// OAuth (HEMIS/OneID) hozircha o'chirilgan — backend tayyor bo'lgach yoqiladi.
+const oauthEnabled = false
 
 function startTypingLoop() {
   let wordIndex = 0
@@ -126,18 +135,60 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="auth-heading">
-            <h2>Sign in to continue</h2>
-            <p>Choose your authentication method to access the registrar office.</p>
+            <h2>Tizimga kirish</h2>
+            <p>Demo rejim: login va parol bilan kiring.</p>
           </div>
+
+          <form class="login-form" @submit.prevent="handleSubmit">
+            <label class="field">
+              <span class="field-label">Login</span>
+              <input
+                v-model="username"
+                type="text"
+                class="field-input"
+                placeholder="Loginni kiriting"
+                autocomplete="username"
+              />
+            </label>
+
+            <label class="field">
+              <span class="field-label">Parol</span>
+              <input
+                v-model="password"
+                type="password"
+                class="field-input"
+                placeholder="Parolni kiriting"
+                autocomplete="current-password"
+              />
+            </label>
+
+            <p v-if="authStore.error" class="form-error">{{ authStore.error }}</p>
+
+            <button type="submit" class="submit-btn" :disabled="authStore.passwordLoading">
+              <span
+                v-if="authStore.passwordLoading"
+                class="spinner-border spinner-border-sm"
+              />
+              <span>Kirish</span>
+            </button>
+
+            <p class="demo-hint">
+              Demo akkauntlar: <code>admin / admin123</code> yoki
+              <code>student / student123</code>
+            </p>
+          </form>
+
+          <div class="auth-divider"><span>yoki tizim orqali</span></div>
 
           <div class="method-list">
             <button
               v-for="method in loginMethods"
               :key="method.id"
+              type="button"
               class="method-btn"
-              :class="method.accent"
-              :disabled="authStore.loadingMethod === method.id"
-              @click="handleLogin(method.id)"
+              :class="[method.accent, { 'is-soon': !oauthEnabled }]"
+              :disabled="!oauthEnabled"
+              :aria-disabled="!oauthEnabled"
             >
               <span class="method-icon">
                 <svg v-if="method.icon === 'staff'" viewBox="0 0 24 24" role="presentation">
@@ -162,13 +213,7 @@ onBeforeUnmount(() => {
                 <small>{{ method.description }}</small>
               </span>
 
-              <span
-                v-if="authStore.loadingMethod === method.id"
-                class="spinner-border spinner-border-sm method-tail"
-              />
-              <svg v-else class="method-arrow" viewBox="0 0 24 24" role="presentation">
-                <path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
+              <span class="soon-badge">Tez orada</span>
             </button>
           </div>
 

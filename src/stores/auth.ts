@@ -5,12 +5,14 @@ import { isMockMode, oauthRedirectUri, providers } from '@/config/oauth'
 import { createCodeVerifier, createState, deriveCodeChallenge } from '@/services/pkce'
 
 export type AuthMethod = 'staff' | 'student' | 'oneid'
+export type AccountKind = 'staff' | 'student'
 
 export interface UserSession {
   id: string
   name: string
   role: string
-  method: AuthMethod
+  kind: AccountKind
+  method: AuthMethod | 'demo'
   accessToken: string
 }
 
@@ -20,10 +22,36 @@ const OAUTH_STATE_KEY = 'r-office-oauth-state'
 const OAUTH_METHOD_KEY = 'r-office-oauth-method'
 
 const MOCK_PROFILES: Record<AuthMethod, Omit<UserSession, 'accessToken' | 'method'>> = {
-  staff: { id: 'EMP-1024', name: 'Registrar Xodimi', role: 'Staff' },
-  student: { id: 'STU-2031', name: 'Talaba Foydalanuvchi', role: 'Student' },
-  oneid: { id: 'OID-7782', name: 'OneID Foydalanuvchi', role: 'Citizen' },
+  staff: { id: 'EMP-1024', name: 'Registrar Xodimi', role: 'Xodim', kind: 'staff' },
+  student: { id: 'STU-2031', name: 'Talaba Foydalanuvchi', role: 'Talaba', kind: 'student' },
+  oneid: { id: 'OID-7782', name: 'OneID Foydalanuvchi', role: 'Talaba', kind: 'student' },
 }
+
+/** Backend tayyor bo'lguncha vaqtinchalik demo akkauntlar. */
+interface DemoAccount {
+  username: string
+  password: string
+  name: string
+  role: string
+  kind: AccountKind
+}
+
+const DEMO_ACCOUNTS: DemoAccount[] = [
+  {
+    username: 'admin',
+    password: 'admin123',
+    name: 'Administrator',
+    role: 'Tizim administratori',
+    kind: 'staff',
+  },
+  {
+    username: 'student',
+    password: 'student123',
+    name: 'Talaba Foydalanuvchi',
+    role: 'Talaba',
+    kind: 'student',
+  },
+]
 
 function loadSession(): UserSession | null {
   try {
@@ -37,14 +65,52 @@ function loadSession(): UserSession | null {
 export const useAuthStore = defineStore('auth', () => {
   const session = ref<UserSession | null>(loadSession())
   const loadingMethod = ref<AuthMethod | null>(null)
+  const passwordLoading = ref(false)
   const error = ref<string | null>(null)
 
   const isAuthenticated = computed(() => session.value !== null)
+  const isStaff = computed(() => session.value?.kind === 'staff')
+  const homePath = computed(() => (isStaff.value ? '/statistics' : '/services'))
 
   function persist(value: UserSession | null) {
     session.value = value
     if (value) localStorage.setItem(SESSION_KEY, JSON.stringify(value))
     else localStorage.removeItem(SESSION_KEY)
+  }
+
+  /** Vaqtinchalik demo: login/parol bilan kirish (backend tayyor bo'lguncha). */
+  async function loginWithPassword(username: string, password: string): Promise<boolean> {
+    error.value = null
+
+    const user = username.trim()
+    if (!user || !password) {
+      error.value = 'Login va parolni kiriting.'
+      return false
+    }
+
+    passwordLoading.value = true
+    await new Promise((resolve) => setTimeout(resolve, 400))
+
+    const match = DEMO_ACCOUNTS.find(
+      (acc) => acc.username === user.toLowerCase() && acc.password === password,
+    )
+
+    if (!match) {
+      error.value = "Login yoki parol noto'g'ri."
+      passwordLoading.value = false
+      return false
+    }
+
+    persist({
+      id: match.username,
+      name: match.name,
+      role: match.role,
+      kind: match.kind,
+      method: 'demo',
+      accessToken: `demo-token-${Date.now()}`,
+    })
+    passwordLoading.value = false
+    return true
   }
 
   /** Login boshlash: real provider bo'lsa HEMIS/OneID ga otadi, aks holda mock. */
@@ -53,7 +119,10 @@ export const useAuthStore = defineStore('auth', () => {
     loadingMethod.value = method
 
     if (isMockMode(method)) {
-      await mockLogin(method)
+      await new Promise((resolve) => setTimeout(resolve, 400))
+      const profile = MOCK_PROFILES[method]
+      persist({ ...profile, method, accessToken: `mock-token-${Date.now()}` })
+      loadingMethod.value = null
       return
     }
 
@@ -83,16 +152,6 @@ export const useAuthStore = defineStore('auth', () => {
       loadingMethod.value = null
       throw err
     }
-  }
-
-  /** Demo login — backend yo'q paytida to'liq oqimni sinash uchun. */
-  async function mockLogin(method: AuthMethod) {
-    const state = createState()
-    sessionStorage.setItem(OAUTH_STATE_KEY, state)
-    sessionStorage.setItem(OAUTH_METHOD_KEY, method)
-    const params = new URLSearchParams({ code: `mock-${method}-code`, state })
-    await new Promise((resolve) => setTimeout(resolve, 400))
-    window.location.href = `${oauthRedirectUri}?${params.toString()}`
   }
 
   /** Callback sahifasidan chaqiriladi: code/state tekshiriladi va sessiya ochiladi. */
@@ -159,7 +218,8 @@ export const useAuthStore = defineStore('auth', () => {
     return {
       id: String(data.id ?? data.sub ?? data.login ?? 'unknown'),
       name: String(data.name ?? data.full_name ?? data.firstname ?? 'Foydalanuvchi'),
-      role: method === 'oneid' ? 'Citizen' : method === 'staff' ? 'Staff' : 'Student',
+      role: method === 'staff' ? 'Xodim' : 'Talaba',
+      kind: method === 'staff' ? 'staff' : 'student',
       method,
       accessToken,
     }
@@ -174,8 +234,12 @@ export const useAuthStore = defineStore('auth', () => {
   return {
     session,
     loadingMethod,
+    passwordLoading,
     error,
     isAuthenticated,
+    isStaff,
+    homePath,
+    loginWithPassword,
     beginLogin,
     handleCallback,
     logout,
