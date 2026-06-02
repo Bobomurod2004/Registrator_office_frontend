@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { useLocaleStore } from '@/stores/locale'
 
 type IconName =
   | 'services'
@@ -17,27 +18,31 @@ interface MenuLink {
 }
 
 const authStore = useAuthStore()
+const localeStore = useLocaleStore()
+const m = computed(() => localeStore.m)
 
 const profileName = computed(() => authStore.session?.name ?? 'Foydalanuvchi')
-const profileRole = computed(() => authStore.session?.role ?? '')
+const profileRole = computed(() =>
+  authStore.isStaff ? m.value.roles.staff : m.value.roles.student,
+)
 const profileInitial = computed(() => profileName.value.charAt(0).toUpperCase())
 
-const staffMenu: MenuLink[] = [
-  { to: '/statistics', label: 'Statistika', icon: 'stats' },
-  { to: '/appeals', label: 'Murojaatlar', icon: 'appeals' },
-  { to: '/staff', label: "Xodim qo'shish", icon: 'staff' },
-  { to: '/grant', label: "Ta'lim granti", icon: 'grant' },
-  { to: '/info', label: 'Info', icon: 'info' },
-]
-
-const studentMenu: MenuLink[] = [
-  { to: '/services', label: 'Tezkor xizmatlar', icon: 'services' },
-  { to: '/appeals', label: 'Mening murojaatlarim', icon: 'appeals' },
-  { to: '/grant', label: "Ta'lim granti", icon: 'grant' },
-  { to: '/info', label: 'Info', icon: 'info' },
-]
-
-const menuLinks = computed(() => (authStore.isStaff ? staffMenu : studentMenu))
+const menuLinks = computed<MenuLink[]>(() =>
+  authStore.isStaff
+    ? [
+        { to: '/statistics', label: m.value.menu.statistics, icon: 'stats' },
+        { to: '/appeals', label: m.value.menu.appeals, icon: 'appeals' },
+        { to: '/staff', label: m.value.menu.addStaff, icon: 'staff' },
+        { to: '/grant', label: m.value.menu.grant, icon: 'grant' },
+        { to: '/info', label: m.value.menu.info, icon: 'info' },
+      ]
+    : [
+        { to: '/services', label: m.value.menu.services, icon: 'services' },
+        { to: '/appeals', label: m.value.menu.myAppeals, icon: 'appeals' },
+        { to: '/grant', label: m.value.menu.grant, icon: 'grant' },
+        { to: '/info', label: m.value.menu.info, icon: 'info' },
+      ],
+)
 </script>
 
 <template>
@@ -45,7 +50,7 @@ const menuLinks = computed(() => (authStore.isStaff ? staffMenu : studentMenu))
     <div class="container-fluid py-4 px-3 px-lg-4">
       <div class="services-layout">
         <aside class="services-sidebar">
-          <div class="sidebar-header">Registrator Ofis</div>
+          <div class="sidebar-header">{{ m.brand.office }}</div>
 
           <div class="profile-card">
             <span class="profile-avatar profile-avatar-initial">{{ profileInitial }}</span>
@@ -104,7 +109,7 @@ const menuLinks = computed(() => (authStore.isStaff ? staffMenu : studentMenu))
                   />
                 </svg>
               </span>
-              <span>Sozlamalar</span>
+              <span>{{ m.menu.settings }}</span>
             </a>
           </nav>
         </aside>

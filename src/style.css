@@ -263,6 +263,19 @@ body {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
 }
 
+.flag-icon {
+  width: 22px;
+  height: 15px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  display: inline-block;
+  box-shadow: 0 0 0 1px rgba(18, 34, 56, 0.15);
+}
+
+.language-menu-item .flag-icon {
+  margin-right: 2px;
+}
+
 .dot-uz {
   background: linear-gradient(180deg, #2aa8ff 0 34%, #ffffff 34% 66%, #35b95a 66% 100%);
 }

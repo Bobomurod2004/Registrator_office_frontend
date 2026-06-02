@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import DashboardLayout from '@/components/DashboardLayout.vue'
 import { useStaffStore } from '@/stores/staff'
+import { useLocaleStore } from '@/stores/locale'
 
 const staffStore = useStaffStore()
+const localeStore = useLocaleStore()
+const m = computed(() => localeStore.m)
 
 const form = ref({ name: '', position: '', department: '', phone: '' })
 const submitted = ref(false)
@@ -24,46 +27,46 @@ function addStaff() {
 
 <template>
   <DashboardLayout>
-    <h1>Xodim qo'shish</h1>
-    <p class="services-subtitle">Yangi xodimni ro'yxatga qo'shing va xodimlar ro'yxatini boshqaring.</p>
+    <h1>{{ m.staff.title }}</h1>
+    <p class="services-subtitle">{{ m.staff.subtitle }}</p>
 
     <div class="appeal-grid">
       <form class="appeal-form" @submit.prevent="addStaff">
-        <h3>Yangi xodim</h3>
+        <h3>{{ m.staff.newStaff }}</h3>
 
         <label class="field">
-          <span class="field-label">F.I.Sh.</span>
-          <input v-model="form.name" type="text" class="field-input" placeholder="Ism familiya" />
+          <span class="field-label">{{ m.staff.name }}</span>
+          <input v-model="form.name" type="text" class="field-input" :placeholder="m.staff.namePlaceholder" />
         </label>
 
         <label class="field">
-          <span class="field-label">Lavozim</span>
-          <input v-model="form.position" type="text" class="field-input" placeholder="Masalan: Registrator" />
+          <span class="field-label">{{ m.staff.position }}</span>
+          <input v-model="form.position" type="text" class="field-input" :placeholder="m.staff.positionPlaceholder" />
         </label>
 
         <label class="field">
-          <span class="field-label">Bo'lim</span>
-          <input v-model="form.department" type="text" class="field-input" placeholder="Bo'lim nomi" />
+          <span class="field-label">{{ m.staff.department }}</span>
+          <input v-model="form.department" type="text" class="field-input" :placeholder="m.staff.departmentPlaceholder" />
         </label>
 
         <label class="field">
-          <span class="field-label">Telefon</span>
+          <span class="field-label">{{ m.staff.phone }}</span>
           <input v-model="form.phone" type="text" class="field-input" placeholder="+998 ..." />
         </label>
 
-        <button type="submit" class="submit-btn">Qo'shish</button>
-        <p v-if="submitted" class="form-success">Xodim qo'shildi.</p>
+        <button type="submit" class="submit-btn">{{ m.staff.add }}</button>
+        <p v-if="submitted" class="form-success">{{ m.staff.added }}</p>
       </form>
 
       <div class="staff-table-wrap">
         <table class="staff-table">
           <thead>
             <tr>
-              <th>ID</th>
-              <th>F.I.Sh.</th>
-              <th>Lavozim</th>
-              <th>Bo'lim</th>
-              <th>Telefon</th>
+              <th>{{ m.staff.colId }}</th>
+              <th>{{ m.staff.name }}</th>
+              <th>{{ m.staff.position }}</th>
+              <th>{{ m.staff.department }}</th>
+              <th>{{ m.staff.colPhone }}</th>
               <th />
             </tr>
           </thead>

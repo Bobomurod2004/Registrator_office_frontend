@@ -1,59 +1,29 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import DashboardLayout from '@/components/DashboardLayout.vue'
+import { useLocaleStore } from '@/stores/locale'
 
-interface InfoCard {
-  id: string
-  title: string
-  details: string[]
-  fileName: string
-}
+const localeStore = useLocaleStore()
+const m = computed(() => localeStore.m)
 
-const cards: InfoCard[] = [
-  {
-    id: 'transfer',
-    title: "O'qishni ko'chirish tartibi",
-    details: [
-      "Arizalar odatda yozgi qabul oynasida qabul qilinadi.",
-      "Talaba shaxsiy kabinet orqali elektron ariza to'ldiradi va hujjatlarni biriktiradi.",
-      "Akademik farq bo'lsa, fakultet tomonidan individual o'quv rejasi belgilanadi.",
-      "Yakunda qabul komissiyasi qarori asosida ko'chirish natijasi e'lon qilinadi.",
-    ],
-    fileName: "oqishni-kochirish-tartibi.txt",
-  },
-  {
-    id: 'masters',
-    title: 'Magistraturaga qabul qilish',
-    details: [
-      "Abituriyent mutaxassislik yo'nalishini tanlaydi va online ro'yxatdan o'tadi.",
-      "Talab etilgan hujjatlar: diplom, transkript, pasport nusxasi va foto.",
-      "Kirish sinovlari va suhbat jadvali e'lon qilingandan keyin natijalar kabinetda ko'rinadi.",
-      "Qabul qilinganlar uchun kontrakt va buyruq jarayonlari avtomatlashtirilgan.",
-    ],
-    fileName: 'magistraturaga-qabul-qilish.txt',
-  },
-  {
-    id: 'second-edu',
-    title: "Ikkinchi ta'limga qabul qilish",
-    details: [
-      "Nomzod amaldagi oliy ma'lumot hujjatlari bilan ariza topshiradi.",
-      "Ta'lim shakli va yo'nalishiga qarab to'lov-kontrakt miqdori belgilanadi.",
-      "Fanlar bo'yicha perezachet jarayoni kafedra bilan kelishilgan holda o'tkaziladi.",
-      "Tasdiqdan so'ng shaxsiy kabinet orqali dars jadvali va topshiriqlar ochiladi.",
-    ],
-    fileName: 'ikkinchi-talimga-qabul-qilish.txt',
-  },
+const fileNames = [
+  'oqishni-kochirish-tartibi.txt',
+  'magistraturaga-qabul-qilish.txt',
+  'ikkinchi-talimga-qabul-qilish.txt',
 ]
 
-const selectedId = ref<string | null>(null)
-const selectedCard = computed(() => cards.find((card) => card.id === selectedId.value) ?? null)
+const cards = computed(() => m.value.info.cards)
+const selectedIndex = ref<number | null>(null)
+const selectedCard = computed(() =>
+  selectedIndex.value !== null ? (cards.value[selectedIndex.value] ?? null) : null,
+)
 
-function selectCard(id: string) {
-  selectedId.value = id
+function selectCard(index: number) {
+  selectedIndex.value = index
 }
 
 function downloadSelected() {
-  if (!selectedCard.value) return
+  if (!selectedCard.value || selectedIndex.value === null) return
 
   const fileContent = [
     selectedCard.value.title,
@@ -65,7 +35,7 @@ function downloadSelected() {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = selectedCard.value.fileName
+  link.download = fileNames[selectedIndex.value] ?? 'info.txt'
   document.body.appendChild(link)
   link.click()
   link.remove()
@@ -78,11 +48,11 @@ function downloadSelected() {
     <div class="info-content">
       <div class="info-cards">
         <button
-          v-for="card in cards"
-          :key="card.id"
+          v-for="(card, index) in cards"
+          :key="card.title"
           class="btn info-topic-card text-start"
-          :class="{ active: selectedId === card.id }"
-          @click="selectCard(card.id)"
+          :class="{ active: selectedIndex === index }"
+          @click="selectCard(index)"
         >
           <h3>{{ card.title }}</h3>
         </button>
@@ -94,7 +64,7 @@ function downloadSelected() {
           <li v-for="detail in selectedCard.details" :key="detail">{{ detail }}</li>
         </ul>
         <button class="btn service-open-btn info-download-btn" type="button" @click="downloadSelected">
-          Yuklab olish
+          {{ m.info.download }}
         </button>
       </article>
     </div>

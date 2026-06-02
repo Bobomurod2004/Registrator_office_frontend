@@ -2,20 +2,27 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useLocaleStore } from '@/stores/locale'
+import type { Locale } from '@/i18n/messages'
+import FlagIcon from '@/components/FlagIcon.vue'
 
 type ThemeMode = 'light' | 'dark' | 'system'
-type Language = 'UZ' | 'EN' | 'RU'
 
 const THEME_KEY = 'r-office-theme-mode'
-const LANG_KEY = 'r-office-language'
 
 const themeMode = ref<ThemeMode>((localStorage.getItem(THEME_KEY) as ThemeMode) || 'system')
-const language = ref<Language>((localStorage.getItem(LANG_KEY) as Language) || 'UZ')
 const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+const localeStore = useLocaleStore()
+const m = computed(() => localeStore.m)
 const showSearch = computed(() => route.name !== 'login')
+
+const roleLabel = computed(() => {
+  if (!authStore.session) return ''
+  return authStore.isStaff ? m.value.roles.staff : m.value.roles.student
+})
 
 function handleLogout() {
   authStore.logout()
@@ -24,17 +31,24 @@ function handleLogout() {
 const isThemeOpen = ref(false)
 const isLanguageOpen = ref(false)
 
-const themeOptions: Array<{ key: ThemeMode; label: string; icon: string }> = [
-  { key: 'light', label: 'Light', icon: 'light' },
-  { key: 'dark', label: 'Dark', icon: 'dark' },
-  { key: 'system', label: 'System', icon: 'system' },
+const themeOptions = computed<Array<{ key: ThemeMode; label: string; icon: string }>>(() => [
+  { key: 'light', label: m.value.header.theme.light, icon: 'light' },
+  { key: 'dark', label: m.value.header.theme.dark, icon: 'dark' },
+  { key: 'system', label: m.value.header.theme.system, icon: 'system' },
+])
+
+const themeLabel = computed(() => m.value.header.theme[themeMode.value])
+
+const languageOptions: Array<{ key: Locale; icon: 'uz' | 'ru' | 'en' }> = [
+  { key: 'UZ', icon: 'uz' },
+  { key: 'EN', icon: 'en' },
+  { key: 'RU', icon: 'ru' },
 ]
 
-const languageOptions: Array<{ key: Language; label: string; icon: string }> = [
-  { key: 'UZ', label: 'UZ', icon: 'uz' },
-  { key: 'EN', label: 'EN', icon: 'en' },
-  { key: 'RU', label: 'RU', icon: 'ru' },
-]
+function selectLanguage(value: Locale) {
+  localeStore.setLocale(value)
+  isLanguageOpen.value = false
+}
 
 function applyTheme() {
   const resolvedTheme =
@@ -66,18 +80,9 @@ function selectTheme(value: ThemeMode) {
   isThemeOpen.value = false
 }
 
-function selectLanguage(value: Language) {
-  language.value = value
-  isLanguageOpen.value = false
-}
-
 watch(themeMode, (value) => {
   localStorage.setItem(THEME_KEY, value)
   applyTheme()
-})
-
-watch(language, (value) => {
-  localStorage.setItem(LANG_KEY, value)
 })
 
 onMounted(() => {
@@ -105,20 +110,20 @@ onBeforeUnmount(() => {
             </svg>
           </div>
           <strong class="brand-title">
-            <span>O'zbekiston davlat</span>
-            <span>jahon tillari universiteti</span>
+            <span>{{ m.brand.uniLine1 }}</span>
+            <span>{{ m.brand.uniLine2 }}</span>
           </strong>
         </div>
 
         <div v-if="showSearch" class="app-search-wrap">
-          <input class="form-control app-search" type="search" placeholder="Qidirish..." />
+          <input class="form-control app-search" type="search" :placeholder="m.header.search" />
         </div>
 
         <div class="app-controls d-flex align-items-center gap-2 ms-auto">
           <div class="header-dropdown" @click.stop>
             <button class="btn header-trigger" @click="toggleThemeDropdown">
               <span class="mode-icon" :class="`mode-${themeMode}`" />
-              <span class="trigger-label text-capitalize">{{ themeMode }}</span>
+              <span class="trigger-label">{{ themeLabel }}</span>
               <span class="trigger-arrow">▼</span>
             </button>
             <ul v-if="isThemeOpen" class="header-menu list-unstyled mb-0">
@@ -137,19 +142,19 @@ onBeforeUnmount(() => {
 
           <div class="header-dropdown" @click.stop>
             <button class="btn header-trigger language-trigger" @click="toggleLanguageDropdown">
-              <span class="lang-dot" :class="`dot-${language.toLowerCase()}`" />
-              <span class="trigger-label">{{ language }}</span>
+              <FlagIcon :code="localeStore.locale.toLowerCase() as 'uz' | 'ru' | 'en'" />
+              <span class="trigger-label">{{ localeStore.locale }}</span>
               <span class="trigger-arrow">▼</span>
             </button>
             <ul v-if="isLanguageOpen" class="header-menu list-unstyled mb-0">
               <li v-for="option in languageOptions" :key="option.key">
                 <button
                   class="header-menu-item language-menu-item"
-                  :class="{ active: language === option.key }"
+                  :class="{ active: localeStore.locale === option.key }"
                   @click="selectLanguage(option.key)"
                 >
-                  <span class="lang-dot" :class="`dot-${option.icon}`" />
-                  <span>{{ option.label }}</span>
+                  <FlagIcon :code="option.icon" />
+                  <span>{{ option.key }}</span>
                 </button>
               </li>
             </ul>
@@ -160,7 +165,7 @@ onBeforeUnmount(() => {
               <span class="user-avatar">{{ (authStore.session?.name || 'U').charAt(0) }}</span>
               <span class="user-meta">
                 <strong>{{ authStore.session?.name }}</strong>
-                <small>{{ authStore.session?.role }}</small>
+                <small>{{ roleLabel }}</small>
               </span>
             </span>
             <button class="btn header-trigger logout-btn" @click="handleLogout">
@@ -169,7 +174,7 @@ onBeforeUnmount(() => {
                   d="M16 13v-2H7V8l-5 4 5 4v-3h9ZM20 3h-9a2 2 0 0 0-2 2v3h2V5h9v14h-9v-3H9v3a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Z"
                 />
               </svg>
-              Chiqish
+              {{ m.header.logout }}
             </button>
           </div>
         </div>

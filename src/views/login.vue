@@ -3,33 +3,35 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import type { AuthMethod } from '@/stores/auth'
 import { useAuthStore } from '@/stores/auth'
+import { useLocaleStore } from '@/stores/locale'
 
 const authStore = useAuthStore()
 const router = useRouter()
+const localeStore = useLocaleStore()
+const m = computed(() => localeStore.m)
 
-const rotatingWords = ['students', 'faculty', 'registrar staff', 'researchers']
 const typedWord = ref('')
 let typingTimer: number | null = null
 
 const loginMethods = computed(() => [
   {
     id: 'staff' as AuthMethod,
-    title: 'HEMIS · Staff',
-    description: 'Academic and registrar employees',
+    title: m.value.login.methods.staff.title,
+    description: m.value.login.methods.staff.description,
     accent: 'staff',
     icon: 'staff',
   },
   {
     id: 'student' as AuthMethod,
-    title: 'HEMIS · Student',
-    description: 'Undergraduate and graduate students',
+    title: m.value.login.methods.student.title,
+    description: m.value.login.methods.student.description,
     accent: 'student',
     icon: 'student',
   },
   {
     id: 'oneid' as AuthMethod,
-    title: 'OneID',
-    description: 'Government unified identity provider',
+    title: m.value.login.methods.oneid.title,
+    description: m.value.login.methods.oneid.description,
     accent: 'oneid',
     icon: 'oneid',
   },
@@ -58,7 +60,8 @@ function startTypingLoop() {
       return
     }
 
-    const current = rotatingWords[wordIndex] ?? ''
+    const words = m.value.login.rotating
+    const current = words[wordIndex % words.length] ?? ''
 
     if (!deleting) {
       charIndex += 1
@@ -72,7 +75,7 @@ function startTypingLoop() {
       typedWord.value = current.slice(0, charIndex)
       if (charIndex <= 0) {
         deleting = false
-        wordIndex = (wordIndex + 1) % rotatingWords.length
+        wordIndex = (wordIndex + 1) % words.length
         pauseSteps = 4
       }
     }
@@ -104,17 +107,14 @@ onBeforeUnmount(() => {
                   d="M12 1 3 5v6c0 5 3.8 9.7 9 11 5.2-1.3 9-6 9-11V5l-9-4Zm-1.2 14.2-3.5-3.5 1.4-1.4 2.1 2.1 4.9-4.9 1.4 1.4-6.3 6.3Z"
                 />
               </svg>
-              Secure HEMIS &amp; OneID
+              {{ m.login.pill }}
             </span>
 
             <h1 class="showcase-title">
-              Digital services for
+              {{ m.login.titlePrefix }}
               <span class="typed">{{ typedWord }}<i class="caret" /></span>
             </h1>
-            <p class="showcase-text">
-              A unified registrar platform delivering trusted, fast and secure academic services for
-              the entire university community.
-            </p>
+            <p class="showcase-text">{{ m.login.showcaseText }}</p>
           </div>
         </section>
 
@@ -130,34 +130,34 @@ onBeforeUnmount(() => {
             </span>
             <span class="brand-copy">
               <strong>UzSWLU Registrar</strong>
-              <small>Digital identity gateway</small>
+              <small>{{ m.brand.gateway }}</small>
             </span>
           </div>
 
           <div class="auth-heading">
-            <h2>Tizimga kirish</h2>
-            <p>Demo rejim: login va parol bilan kiring.</p>
+            <h2>{{ m.login.heading }}</h2>
+            <p>{{ m.login.subheading }}</p>
           </div>
 
           <form class="login-form" @submit.prevent="handleSubmit">
             <label class="field">
-              <span class="field-label">Login</span>
+              <span class="field-label">{{ m.login.loginLabel }}</span>
               <input
                 v-model="username"
                 type="text"
                 class="field-input"
-                placeholder="Loginni kiriting"
+                :placeholder="m.login.loginPlaceholder"
                 autocomplete="username"
               />
             </label>
 
             <label class="field">
-              <span class="field-label">Parol</span>
+              <span class="field-label">{{ m.login.passwordLabel }}</span>
               <input
                 v-model="password"
                 type="password"
                 class="field-input"
-                placeholder="Parolni kiriting"
+                :placeholder="m.login.passwordPlaceholder"
                 autocomplete="current-password"
               />
             </label>
@@ -169,16 +169,16 @@ onBeforeUnmount(() => {
                 v-if="authStore.passwordLoading"
                 class="spinner-border spinner-border-sm"
               />
-              <span>Kirish</span>
+              <span>{{ m.login.submit }}</span>
             </button>
 
             <p class="demo-hint">
-              Demo akkauntlar: <code>admin / admin123</code> yoki
+              {{ m.login.demoHint }} <code>admin / admin123</code> ·
               <code>student / student123</code>
             </p>
           </form>
 
-          <div class="auth-divider"><span>yoki tizim orqali</span></div>
+          <div class="auth-divider"><span>{{ m.login.orVia }}</span></div>
 
           <div class="method-list">
             <button
@@ -213,7 +213,7 @@ onBeforeUnmount(() => {
                 <small>{{ method.description }}</small>
               </span>
 
-              <span class="soon-badge">Tez orada</span>
+              <span class="soon-badge">{{ m.login.soon }}</span>
             </button>
           </div>
 
@@ -223,7 +223,7 @@ onBeforeUnmount(() => {
                 d="M12 1 3 5v6c0 5 3.8 9.7 9 11 5.2-1.3 9-6 9-11V5l-9-4Zm0 10.9h7c-.5 3.6-3 6.8-7 8V12H5V6.3l7-3.1v8.7Z"
               />
             </svg>
-            Protected by government-grade encryption
+            {{ m.login.secured }}
           </p>
         </section>
       </div>
