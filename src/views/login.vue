@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import type { AuthMethod } from '@/stores/auth'
 import { useAuthStore } from '@/stores/auth'
 import { useLocaleStore } from '@/stores/locale'
+import AppLogo from '@/components/AppLogo.vue'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -121,13 +122,7 @@ onBeforeUnmount(() => {
         <!-- Right auth panel -->
         <section class="auth-panel">
           <div class="auth-brand">
-            <span class="brand-mark">
-              <svg viewBox="0 0 64 64" role="presentation">
-                <path
-                  d="M32 8 56 20 32 32 8 20 32 8Zm-16 19v11c0 5 8 10 16 10s16-5 16-10V27l-16 8-16-8Z"
-                />
-              </svg>
-            </span>
+            <AppLogo size="md" />
             <span class="brand-copy">
               <strong>UzSWLU Registrar</strong>
               <small>{{ m.brand.gateway }}</small>

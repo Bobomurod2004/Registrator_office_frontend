@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useLocaleStore } from '@/stores/locale'
 import type { Locale } from '@/i18n/messages'
 import FlagIcon from '@/components/FlagIcon.vue'
+import AppLogo from '@/components/AppLogo.vue'
 
 type ThemeMode = 'light' | 'dark' | 'system'
 
@@ -102,13 +103,7 @@ onBeforeUnmount(() => {
     <div class="container-fluid shell px-3 px-lg-4 py-3">
       <div class="app-topbar d-flex align-items-center gap-3">
         <div class="app-brand d-flex align-items-center gap-3">
-          <div class="brand-logo" aria-hidden="true">
-            <svg viewBox="0 0 64 64" role="presentation">
-              <path
-                d="M32 8 56 20 32 32 8 20 32 8Zm-16 19v11c0 5 8 10 16 10s16-5 16-10V27l-16 8-16-8Z"
-              />
-            </svg>
-          </div>
+          <AppLogo size="sm" />
           <strong class="brand-title">
             <span>{{ m.brand.uniLine1 }}</span>
             <span>{{ m.brand.uniLine2 }}</span>

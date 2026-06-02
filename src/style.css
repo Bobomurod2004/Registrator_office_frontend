@@ -60,20 +60,9 @@ body {
   min-width: 280px;
 }
 
-.brand-logo {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(165deg, #2f6dff 0%, #3db2ff 100%);
-  box-shadow: 0 8px 18px rgba(49, 108, 237, 0.3);
-}
-
-.brand-logo svg {
-  width: 25px;
-  height: 25px;
-  fill: #fff;
+:root[data-theme='dark'] .app-logo__mark {
+  background: linear-gradient(155deg, #6dffc4 0%, #3aefae 45%, #4dd4ff 100%);
+  filter: drop-shadow(0 2px 6px rgba(32, 210, 130, 0.22));
 }
 
 .brand-title {
@@ -446,23 +435,6 @@ body {
   align-items: center;
   gap: 12px;
   margin-bottom: 34px;
-}
-
-.brand-mark {
-  width: 48px;
-  height: 48px;
-  flex-shrink: 0;
-  border-radius: 15px;
-  display: inline-grid;
-  place-items: center;
-  background: linear-gradient(165deg, #2f6dff 0%, #3db2ff 100%);
-  box-shadow: 0 12px 24px rgba(49, 108, 237, 0.35);
-}
-
-.brand-mark svg {
-  width: 27px;
-  height: 27px;
-  fill: #fff;
 }
 
 .brand-copy strong {
