@@ -14,6 +14,39 @@ export interface UserSession {
   kind: AccountKind
   method: AuthMethod | 'demo'
   accessToken: string
+  refreshToken?: string
+}
+
+export type BackendRole =
+  | 'student'
+  | 'operator'
+  | 'dekanat'
+  | 'accountant'
+  | 'science'
+  | 'international'
+  | 'department_admin'
+  | 'super_admin'
+
+/** Backenddagi RoleEnum qiymatlari (api/v1/auth/login/ va /auth/me/ shu formatda qaytaradi). */
+export interface BackendUser {
+  id: number
+  hemis_id: string
+  full_name: string
+  role: BackendRole
+  role_display: string
+}
+
+/** GET/PATCH /api/v1/auth/me/ to'liq javob shakli. */
+export interface UserProfile extends BackendUser {
+  email: string | null
+  phone: string | null
+  gender: 'male' | 'female' | null | ''
+  language: 'uz' | 'uz_cyrl' | 'ru' | 'en'
+  department: number | null
+  department_name: string
+  student_profile: string | null
+  is_locked: boolean
+  created_at: string
 }
 
 const SESSION_KEY = 'r-office-session'
@@ -27,31 +60,17 @@ const MOCK_PROFILES: Record<AuthMethod, Omit<UserSession, 'accessToken' | 'metho
   oneid: { id: 'OID-7782', name: 'OneID Foydalanuvchi', role: 'Talaba', kind: 'student' },
 }
 
-/** Backend tayyor bo'lguncha vaqtinchalik demo akkauntlar. */
-interface DemoAccount {
-  username: string
-  password: string
-  name: string
-  role: string
-  kind: AccountKind
+function toSession(user: BackendUser, accessToken: string, refreshToken: string): UserSession {
+  return {
+    id: String(user.id),
+    name: user.full_name || user.hemis_id,
+    role: user.role_display,
+    kind: user.role === 'student' ? 'student' : 'staff',
+    method: 'staff',
+    accessToken,
+    refreshToken,
+  }
 }
-
-const DEMO_ACCOUNTS: DemoAccount[] = [
-  {
-    username: 'admin',
-    password: 'admin123',
-    name: 'Administrator',
-    role: 'Tizim administratori',
-    kind: 'staff',
-  },
-  {
-    username: 'student',
-    password: 'student123',
-    name: 'Talaba Foydalanuvchi',
-    role: 'Talaba',
-    kind: 'student',
-  },
-]
 
 function loadSession(): UserSession | null {
   try {
@@ -78,39 +97,51 @@ export const useAuthStore = defineStore('auth', () => {
     else localStorage.removeItem(SESSION_KEY)
   }
 
-  /** Vaqtinchalik demo: login/parol bilan kirish (backend tayyor bo'lguncha). */
+  /** Profil ma'lumoti (ism, rol) backendda yangilangach, lokal sessiyani ham sinxronlaydi. */
+  function syncProfile(user: BackendUser) {
+    if (!session.value) return
+    persist({
+      ...session.value,
+      name: user.full_name || user.hemis_id,
+      role: user.role_display,
+      kind: user.role === 'student' ? 'student' : 'staff',
+    })
+  }
+
+  /**
+   * Login+parol bilan kirish (backend: POST /api/v1/auth/login/).
+   * Faqat department_admin va super_admin uchun ishlaydi — boshqa rollar
+   * OAuth2 (HEMIS/talaba) orqali kiradi.
+   */
   async function loginWithPassword(username: string, password: string): Promise<boolean> {
     error.value = null
 
-    const user = username.trim()
-    if (!user || !password) {
+    const hemisId = username.trim()
+    if (!hemisId || !password) {
       error.value = 'Login va parolni kiriting.'
       return false
     }
 
     passwordLoading.value = true
-    await new Promise((resolve) => setTimeout(resolve, 400))
 
-    const match = DEMO_ACCOUNTS.find(
-      (acc) => acc.username === user.toLowerCase() && acc.password === password,
-    )
-
-    if (!match) {
-      error.value = "Login yoki parol noto'g'ri."
-      passwordLoading.value = false
+    try {
+      const { data } = await http.post('/api/v1/auth/login/', {
+        hemis_id: hemisId,
+        password,
+      })
+      persist(toSession(data.user, data.access, data.refresh))
+      return true
+    } catch (err: any) {
+      const status = err?.response?.status
+      if (status === 401 || status === 400) {
+        error.value = "Login yoki parol noto'g'ri."
+      } else {
+        error.value = 'Serverga ulanishda xatolik yuz berdi. Birozdan so\'ng qayta urinib ko\'ring.'
+      }
       return false
+    } finally {
+      passwordLoading.value = false
     }
-
-    persist({
-      id: match.username,
-      name: match.name,
-      role: match.role,
-      kind: match.kind,
-      method: 'demo',
-      accessToken: `demo-token-${Date.now()}`,
-    })
-    passwordLoading.value = false
-    return true
   }
 
   /** Login boshlash: real provider bo'lsa HEMIS/OneID ga otadi, aks holda mock. */
@@ -225,10 +256,22 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  /**
+   * Chiqish: lokal sessiya darhol tozalanadi (UI/route guard kutmasin),
+   * refresh tokenni blacklistga qo'shish esa fonda, natijasini kutmasdan yuboriladi.
+   */
   function logout() {
+    const refreshToken = session.value?.refreshToken
+
     persist(null)
     error.value = null
     loadingMethod.value = null
+
+    if (refreshToken) {
+      http.post('/api/v1/auth/logout/', { refresh: refreshToken }).catch(() => {
+        // Server bilan bog'lanib bo'lmasa ham, lokal sessiya allaqachon tozalangan.
+      })
+    }
   }
 
   return {
@@ -243,5 +286,6 @@ export const useAuthStore = defineStore('auth', () => {
     beginLogin,
     handleCallback,
     logout,
+    syncProfile,
   }
 })

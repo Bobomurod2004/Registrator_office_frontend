@@ -504,6 +504,52 @@ body {
   box-shadow: 0 0 0 4px rgba(47, 109, 255, 0.14);
 }
 
+.field-input-group {
+  position: relative;
+  display: block;
+}
+
+.field-input-group .field-input {
+  width: 100%;
+  padding-right: 44px;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: transparent;
+  color: #6f85a8;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.password-toggle svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.password-toggle circle {
+  fill: none;
+}
+
+.password-toggle:hover {
+  color: #2f6dff;
+  background: rgba(47, 109, 255, 0.1);
+}
+
 .form-error {
   margin: -2px 0 0;
   font-size: 13px;
@@ -643,6 +689,12 @@ body {
 .method-icon svg {
   width: 22px;
   height: 22px;
+}
+
+.method-icon-image {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
 }
 
 .method-copy {
@@ -840,6 +892,15 @@ body {
 
 :root[data-theme='dark'] .field-input::placeholder {
   color: #7188ad;
+}
+
+:root[data-theme='dark'] .password-toggle {
+  color: #8ea3c7;
+}
+
+:root[data-theme='dark'] .password-toggle:hover {
+  color: #6ea0ff;
+  background: rgba(110, 160, 255, 0.14);
 }
 
 :root[data-theme='dark'] .auth-divider::before,

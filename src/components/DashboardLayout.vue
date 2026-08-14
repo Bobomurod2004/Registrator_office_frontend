@@ -39,7 +39,6 @@ const menuLinks = computed<MenuLink[]>(() =>
     : [
         { to: '/services', label: m.value.menu.services, icon: 'services' },
         { to: '/appeals', label: m.value.menu.myAppeals, icon: 'appeals' },
-        { to: '/grant', label: m.value.menu.grant, icon: 'grant' },
         { to: '/info', label: m.value.menu.info, icon: 'info' },
       ],
 )
@@ -101,7 +100,7 @@ const menuLinks = computed<MenuLink[]>(() =>
           </nav>
 
           <nav class="sidebar-menu secondary">
-            <a class="menu-item" href="#">
+            <router-link class="menu-item" active-class="active" to="/settings">
               <span class="menu-icon">
                 <svg viewBox="0 0 24 24" role="presentation">
                   <path
@@ -110,7 +109,7 @@ const menuLinks = computed<MenuLink[]>(() =>
                 </svg>
               </span>
               <span>{{ m.menu.settings }}</span>
-            </a>
+            </router-link>
           </nav>
         </aside>
 

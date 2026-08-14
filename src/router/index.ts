@@ -41,12 +41,18 @@ const routes = [
     path: '/grant',
     name: 'grant',
     component: () => import('@/views/grant.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, staffOnly: true },
   },
   {
     path: '/info',
     name: 'info',
     component: () => import('@/views/info.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/settings',
+    name: 'settings',
+    component: () => import('@/views/settings.vue'),
     meta: { requiresAuth: true },
   },
 ]

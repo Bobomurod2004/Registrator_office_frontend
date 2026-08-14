@@ -40,6 +40,7 @@ const loginMethods = computed(() => [
 
 const username = ref('')
 const password = ref('')
+const showPassword = ref(false)
 
 async function handleSubmit() {
   const ok = await authStore.loginWithPassword(username.value, password.value)
@@ -148,13 +149,33 @@ onBeforeUnmount(() => {
 
             <label class="field">
               <span class="field-label">{{ m.login.passwordLabel }}</span>
-              <input
-                v-model="password"
-                type="password"
-                class="field-input"
-                :placeholder="m.login.passwordPlaceholder"
-                autocomplete="current-password"
-              />
+              <span class="field-input-group">
+                <input
+                  v-model="password"
+                  :type="showPassword ? 'text' : 'password'"
+                  class="field-input"
+                  :placeholder="m.login.passwordPlaceholder"
+                  autocomplete="current-password"
+                />
+                <button
+                  type="button"
+                  class="password-toggle"
+                  :aria-label="showPassword ? m.login.hidePassword : m.login.showPassword"
+                  @click="showPassword = !showPassword"
+                >
+                  <svg v-if="showPassword" viewBox="0 0 24 24" role="presentation">
+                    <path
+                      d="M3.5 3.5 20.5 20.5M9.9 9.9a3 3 0 0 0 4.2 4.2M6.4 6.6C4 8.2 2.3 10.4 1.5 12c1.6 3.4 5.4 7 10.5 7 1.8 0 3.4-.4 4.8-1.1M10.6 5.1C11 5 11.5 5 12 5c5.1 0 8.9 3.6 10.5 7-.6 1.3-1.5 2.6-2.7 3.8"
+                    />
+                  </svg>
+                  <svg v-else viewBox="0 0 24 24" role="presentation">
+                    <path
+                      d="M1.5 12C3.1 8.6 6.9 5 12 5s8.9 3.6 10.5 7C20.9 15.4 17.1 19 12 19S3.1 15.4 1.5 12Z"
+                    />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                </button>
+              </span>
             </label>
 
             <p v-if="authStore.error" class="form-error">{{ authStore.error }}</p>
@@ -166,11 +187,6 @@ onBeforeUnmount(() => {
               />
               <span>{{ m.login.submit }}</span>
             </button>
-
-            <p class="demo-hint">
-              {{ m.login.demoHint }} <code>admin / admin123</code> ·
-              <code>student / student123</code>
-            </p>
           </form>
 
           <div class="auth-divider"><span>{{ m.login.orVia }}</span></div>
@@ -186,21 +202,29 @@ onBeforeUnmount(() => {
               :aria-disabled="!oauthEnabled"
             >
               <span class="method-icon">
-                <svg v-if="method.icon === 'staff'" viewBox="0 0 24 24" role="presentation">
+                <!-- <svg v-if="method.icon === 'staff'" viewBox="0 0 24 24" role="presentation">
                   <path
                     d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-3.3 0-6 1.9-6 4.2V20h12v-1.8c0-2.3-2.7-4.2-6-4.2ZM19 6h-2V4h-2v2h-2v2h2v2h2V8h2V6Z"
                   />
-                </svg>
+                </svg>  -->
+                <img
+                  v-if="method.icon === 'staff'"
+                  src="/iconka.png"
+                  alt="Hodimlar uchun login"
+                  class="method-icon-image"
+                >
+                
                 <svg v-else-if="method.icon === 'student'" viewBox="0 0 24 24" role="presentation">
                   <path
                     d="m12 3 9 4.5-9 4.5L3 7.5 12 3Zm-6.9 7.1V14c0 2.1 3.1 3.8 6.9 3.8s6.9-1.7 6.9-3.8v-3.9L12 14l-6.9-3.9Z"
                   />
                 </svg>
-                <svg v-else viewBox="0 0 24 24" role="presentation">
-                  <path
-                    d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm0 4a6 6 0 0 1 0 12 6 6 0 1 1 0-12Z"
-                  />
-                </svg>
+                <img
+                  v-else
+                  src="/one_id.ico"
+                  alt="OneID login"
+                  class="method-icon-image"
+                >
               </span>
 
               <span class="method-copy">
