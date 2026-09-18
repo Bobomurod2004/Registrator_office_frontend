@@ -1,20 +1,21 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { http } from '@/services/http'
-import { isMockMode, oauthRedirectUri, providers } from '@/config/oauth'
-import { createCodeVerifier, createState, deriveCodeChallenge } from '@/services/pkce'
+import { fetchAuthenticatedImageUrl, http } from '@/services/http'
 
 export type AuthMethod = 'staff' | 'student' | 'oneid'
+type HemisMethod = 'staff' | 'student'
 export type AccountKind = 'staff' | 'student'
 
 export interface UserSession {
   id: string
   name: string
   role: string
+  roleCode: BackendRole | null
   kind: AccountKind
   method: AuthMethod | 'demo'
   accessToken: string
   refreshToken?: string
+  imageUrl?: string | null
 }
 
 export type BackendRole =
@@ -44,32 +45,56 @@ export interface UserProfile extends BackendUser {
   language: 'uz' | 'uz_cyrl' | 'ru' | 'en'
   department: number | null
   department_name: string
-  student_profile: string | null
+  student_profile: string | Record<string, unknown> | null
+  employee_profile: string | Record<string, unknown> | null
   is_locked: boolean
   created_at: string
 }
 
 const SESSION_KEY = 'r-office-session'
-const PKCE_VERIFIER_KEY = 'r-office-pkce-verifier'
-const OAUTH_STATE_KEY = 'r-office-oauth-state'
 const OAUTH_METHOD_KEY = 'r-office-oauth-method'
 
-const MOCK_PROFILES: Record<AuthMethod, Omit<UserSession, 'accessToken' | 'method'>> = {
-  staff: { id: 'EMP-1024', name: 'Registrar Xodimi', role: 'Xodim', kind: 'staff' },
-  student: { id: 'STU-2031', name: 'Talaba Foydalanuvchi', role: 'Talaba', kind: 'student' },
-  oneid: { id: 'OID-7782', name: 'OneID Foydalanuvchi', role: 'Talaba', kind: 'student' },
+/** HEMIS OAuth2 orqali kirish uchun backend endpointlari (staff va student uchun alohida). */
+const HEMIS_ENDPOINTS: Record<HemisMethod, { redirect: string; callback: string }> = {
+  staff: { redirect: '/api/v1/hemis/oauth/redirect/', callback: '/api/v1/hemis/oauth/callback/' },
+  student: {
+    redirect: '/api/v1/hemis/student/oauth/redirect/',
+    callback: '/api/v1/hemis/student/oauth/callback/',
+  },
 }
 
-function toSession(user: BackendUser, accessToken: string, refreshToken: string): UserSession {
+/**
+ * Talaba/xodim ekanligini aniqlaydi. `user.role`ning o'ziga ishonib bo'lmaydi —
+ * backend ba'zan bu maydonni hujjatlashtirilmagan/kutilmagan qiymat bilan
+ * qaytarishi mumkin (masalan yangi HEMIS-sinxronlangan talaba uchun bo'sh/boshqa
+ * qiymat). HEMIS "Talaba" OAuth endpointi orqali kirish — bu sof talaba ekanining
+ * eng ishonchli belgisi, shu sabab u `role`dan ustuvor olinadi.
+ */
+function resolveKind(role: BackendRole, method: AuthMethod): AccountKind {
+  return method === 'student' || role === 'student' ? 'student' : 'staff'
+}
+
+function toSession(
+  user: BackendUser,
+  accessToken: string,
+  refreshToken: string,
+  method: AuthMethod = 'staff',
+): UserSession {
   return {
     id: String(user.id),
     name: user.full_name || user.hemis_id,
     role: user.role_display,
-    kind: user.role === 'student' ? 'student' : 'staff',
-    method: 'staff',
+    roleCode: user.role,
+    kind: resolveKind(user.role, method),
+    method,
     accessToken,
     refreshToken,
   }
+}
+
+/** GET .../oauth/redirect/ javobi Swagger'da hujjatlashtirilmagan — eng ehtimoliy maydon nomlari sinaladi. */
+function extractRedirectUrl(data: any): string | null {
+  return data?.url ?? data?.redirect_url ?? data?.login_url ?? data?.authorization_url ?? data?.auth_url ?? null
 }
 
 function loadSession(): UserSession | null {
@@ -86,9 +111,14 @@ export const useAuthStore = defineStore('auth', () => {
   const loadingMethod = ref<AuthMethod | null>(null)
   const passwordLoading = ref(false)
   const error = ref<string | null>(null)
+  const oauthError = ref<string | null>(null)
 
   const isAuthenticated = computed(() => session.value !== null)
   const isStaff = computed(() => session.value?.kind === 'staff')
+  const isAdmin = computed(
+    () => session.value?.roleCode === 'department_admin' || session.value?.roleCode === 'super_admin',
+  )
+  const isSuperAdmin = computed(() => session.value?.roleCode === 'super_admin')
   const homePath = computed(() => (isStaff.value ? '/statistics' : '/services'))
 
   function persist(value: UserSession | null) {
@@ -104,8 +134,49 @@ export const useAuthStore = defineStore('auth', () => {
       ...session.value,
       name: user.full_name || user.hemis_id,
       role: user.role_display,
-      kind: user.role === 'student' ? 'student' : 'staff',
+      roleCode: user.role,
+      kind: resolveKind(user.role, session.value.method === 'demo' ? 'staff' : session.value.method),
     })
+  }
+
+  /** GET /api/v1/auth/profile/ — hemis_id/full_name/phone/email/image/role/gender/bo'lim.
+   *  Tizimga yuklangan rasm o'chirilgan bo'lsa, backend endi `effective_image_url`
+   *  (yuklangan rasm bo'lmasa HEMIS'dan kelgan rasmga tushadigan, hal qiluvchi
+   *  qiymat) qaytaradi — shu maydon `image`dan ustuvor o'qiladi, mavjud bo'lmasa
+   *  eski `image`ga tushiladi (orqaga moslik uchun).
+   *  Rasm fayli backendda himoyalangan (`IsAuthenticated`) bo'lgani uchun
+   *  to'g'ridan-to'g'ri URL emas, tokenli so'rov orqali (blob) yuklanadi. */
+  async function fetchProfileImage(): Promise<void> {
+    if (!session.value) return
+    try {
+      const { data } = await http.get('/api/v1/auth/profile/')
+      const newImageUrl = await fetchAuthenticatedImageUrl(data?.effective_image_url ?? data?.image)
+      const previousImageUrl = session.value?.imageUrl
+      if (previousImageUrl?.startsWith('blob:')) URL.revokeObjectURL(previousImageUrl)
+      if (session.value) persist({ ...session.value, imageUrl: newImageUrl })
+    } catch {
+      // Jim tur — rasm bo'lmasa harf-avatar fallback ishlatiladi.
+    }
+  }
+
+  /** DELETE /api/v1/auth/profile/ — foydalanuvchi tizim orqali o'zi yuklagan
+   * rasmni o'chiradi (HEMIS'dan kelgan rasmga tegmaydi — o'chirilgandan keyin,
+   * agar HEMIS rasmi bo'lsa, avtomatik o'sha ko'rsatiladi). Muvaffaqiyatli
+   * bo'lsa profil rasmi darhol qayta yuklanadi. */
+  async function deleteProfileImage(): Promise<void> {
+    await http.delete('/api/v1/auth/profile/')
+    await fetchProfileImage()
+  }
+
+  /**
+   * Joriy foydalanuvchi o'z ma'lumotlarini (ism, bo'lim, rasm va h.k.) HEMIS'dan
+   * qayta yuklaydi (POST /api/v1/hemis/sync/). Muvaffaqiyatli bo'lsa profil
+   * rasmi darhol yangilanadi — chaqiruvchi (Sozlamalar sahifasi) qolgan
+   * maydonlarni yangilash uchun profilni qayta yuklashi kerak.
+   */
+  async function syncFromHemis(): Promise<void> {
+    await http.post('/api/v1/hemis/sync/')
+    await fetchProfileImage()
   }
 
   /**
@@ -144,116 +215,61 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  /** Login boshlash: real provider bo'lsa HEMIS/OneID ga otadi, aks holda mock. */
+  /**
+   * HEMIS OAuth2 orqali kirishni boshlash (faqat 'staff'/'student' — OneID
+   * backendda hali mavjud emas). Backend login URL'ini qaytaradi, biz shu
+   * manzilga o'tamiz; HEMIS keyin foydalanuvchini backendda ro'yxatdan
+   * o'tgan redirect_uri'ga (frontendning /callback sahifasi) code bilan qaytaradi.
+   */
   async function beginLogin(method: AuthMethod) {
-    error.value = null
-    loadingMethod.value = method
+    oauthError.value = null
 
-    if (isMockMode(method)) {
-      await new Promise((resolve) => setTimeout(resolve, 400))
-      const profile = MOCK_PROFILES[method]
-      persist({ ...profile, method, accessToken: `mock-token-${Date.now()}` })
-      loadingMethod.value = null
+    if (method === 'oneid') {
+      oauthError.value = 'OneID orqali kirish hali mavjud emas.'
       return
     }
 
+    loadingMethod.value = method
+
     try {
-      const provider = providers[method]
-      const verifier = createCodeVerifier()
-      const state = createState()
-      const challenge = await deriveCodeChallenge(verifier)
+      const { data } = await http.get(HEMIS_ENDPOINTS[method].redirect)
+      const url = extractRedirectUrl(data)
+      if (!url) throw new Error('Login URL topilmadi')
 
-      sessionStorage.setItem(PKCE_VERIFIER_KEY, verifier)
-      sessionStorage.setItem(OAUTH_STATE_KEY, state)
       sessionStorage.setItem(OAUTH_METHOD_KEY, method)
-
-      const params = new URLSearchParams({
-        response_type: 'code',
-        client_id: provider.clientId,
-        redirect_uri: oauthRedirectUri,
-        scope: provider.scope,
-        state,
-        code_challenge: challenge,
-        code_challenge_method: 'S256',
-      })
-
-      window.location.href = `${provider.authorizeUrl}?${params.toString()}`
-    } catch (err) {
-      error.value = 'Login boshlashda xatolik yuz berdi.'
+      window.location.href = url
+    } catch {
+      oauthError.value = 'Kirish sahifasiga yo\'naltirishda xatolik yuz berdi.'
       loadingMethod.value = null
-      throw err
     }
   }
 
-  /** Callback sahifasidan chaqiriladi: code/state tekshiriladi va sessiya ochiladi. */
+  /** Callback sahifasidan chaqiriladi: HEMIS'dan kelgan code backendga yuboriladi va sessiya ochiladi. */
   async function handleCallback(query: URLSearchParams): Promise<UserSession> {
     const code = query.get('code')
-    const returnedState = query.get('state')
-    const oauthError = query.get('error')
+    const state = query.get('state')
+    const providerError = query.get('error')
 
-    const method = (sessionStorage.getItem(OAUTH_METHOD_KEY) as AuthMethod | null) ?? null
-    const expectedState = sessionStorage.getItem(OAUTH_STATE_KEY)
-
-    sessionStorage.removeItem(OAUTH_STATE_KEY)
+    const method = (sessionStorage.getItem(OAUTH_METHOD_KEY) as HemisMethod | null) ?? null
     sessionStorage.removeItem(OAUTH_METHOD_KEY)
 
-    if (oauthError) throw new Error(`Provider xatosi: ${oauthError}`)
+    if (providerError) throw new Error(`Provider xatosi: ${providerError}`)
     if (!code) throw new Error('Avtorizatsiya kodi topilmadi.')
     if (!method) throw new Error('Login metodi aniqlanmadi.')
-    if (expectedState && returnedState !== expectedState) {
-      throw new Error('State mos kelmadi (CSRF himoyasi).')
-    }
 
-    let newSession: UserSession
+    const { data } = await http.post(HEMIS_ENDPOINTS[method].callback, {
+      code,
+      state: state ?? undefined,
+    })
 
-    if (isMockMode(method)) {
-      const profile = MOCK_PROFILES[method]
-      newSession = { ...profile, method, accessToken: `mock-token-${Date.now()}` }
-    } else {
-      newSession = await exchangeCodeForSession(method, code)
-    }
+    const accessToken = data.access ?? data.access_token
+    const refreshToken = data.refresh ?? data.refresh_token
+    if (!accessToken || !data.user) throw new Error('Backend javobi kutilgan shaklda emas.')
 
-    sessionStorage.removeItem(PKCE_VERIFIER_KEY)
+    const newSession = toSession(data.user, accessToken, refreshToken, method)
     persist(newSession)
     loadingMethod.value = null
     return newSession
-  }
-
-  /**
-   * PKCE token almashinuvi to'g'ridan-to'g'ri brauzerdan.
-   * DIQQAT: faqat provider PKCE (public client) + CORS qo'llasa ishlaydi.
-   * Aks holda bu qism backendga ko'chiriladi.
-   */
-  async function exchangeCodeForSession(method: AuthMethod, code: string): Promise<UserSession> {
-    const provider = providers[method]
-    const verifier = sessionStorage.getItem(PKCE_VERIFIER_KEY) || ''
-
-    const tokenBody = new URLSearchParams({
-      grant_type: 'authorization_code',
-      code,
-      redirect_uri: oauthRedirectUri,
-      client_id: provider.clientId,
-      code_verifier: verifier,
-    })
-
-    const tokenResp = await http.post(provider.tokenUrl, tokenBody, {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    })
-    const accessToken = tokenResp.data.access_token as string
-
-    const userResp = await http.get(provider.userInfoUrl, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    })
-    const data = userResp.data
-
-    return {
-      id: String(data.id ?? data.sub ?? data.login ?? 'unknown'),
-      name: String(data.name ?? data.full_name ?? data.firstname ?? 'Foydalanuvchi'),
-      role: method === 'staff' ? 'Xodim' : 'Talaba',
-      kind: method === 'staff' ? 'staff' : 'student',
-      method,
-      accessToken,
-    }
   }
 
   /**
@@ -262,9 +278,12 @@ export const useAuthStore = defineStore('auth', () => {
    */
   function logout() {
     const refreshToken = session.value?.refreshToken
+    const imageUrl = session.value?.imageUrl
+    if (imageUrl?.startsWith('blob:')) URL.revokeObjectURL(imageUrl)
 
     persist(null)
     error.value = null
+    oauthError.value = null
     loadingMethod.value = null
 
     if (refreshToken) {
@@ -279,13 +298,19 @@ export const useAuthStore = defineStore('auth', () => {
     loadingMethod,
     passwordLoading,
     error,
+    oauthError,
     isAuthenticated,
     isStaff,
+    isAdmin,
+    isSuperAdmin,
     homePath,
     loginWithPassword,
     beginLogin,
     handleCallback,
     logout,
     syncProfile,
+    fetchProfileImage,
+    deleteProfileImage,
+    syncFromHemis,
   }
 })

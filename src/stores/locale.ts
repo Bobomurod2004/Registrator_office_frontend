@@ -7,7 +7,7 @@ const LANG_KEY = 'r-office-language'
 
 function loadLocale(): Locale {
   const saved = localStorage.getItem(LANG_KEY) as Locale | null
-  return saved === 'UZ' || saved === 'RU' || saved === 'EN' ? saved : 'UZ'
+  return saved === 'UZ' || saved === 'UZ_CYRL' || saved === 'RU' || saved === 'EN' ? saved : 'UZ'
 }
 
 export const useLocaleStore = defineStore('locale', () => {

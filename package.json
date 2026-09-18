@@ -11,11 +11,16 @@
     "type-check": "vue-tsc --build"
   },
   "dependencies": {
+    "@ckeditor/ckeditor5-vue": "^8.2.0",
     "axios": "^1.13.6",
     "bootstrap": "^5.3.8",
+    "ckeditor5": "^48.4.0",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "pinia": "^3.0.4",
     "vue": "^3.5.29",
-    "vue-router": "^5.0.3"
+    "vue-router": "^5.0.3",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@tsconfig/node24": "^24.0.4",

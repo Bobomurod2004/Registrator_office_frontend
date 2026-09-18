@@ -47,8 +47,13 @@ async function handleSubmit() {
   if (ok) await router.push({ path: authStore.homePath })
 }
 
-// OAuth (HEMIS/OneID) hozircha o'chirilgan — backend tayyor bo'lgach yoqiladi.
-const oauthEnabled = false
+// HEMIS (xodim/talaba) backendga ulandi. OneID hali backendda mavjud emas — "Tez orada".
+const oauthEnabled: Record<AuthMethod, boolean> = { staff: true, student: true, oneid: false }
+
+function startOAuth(method: AuthMethod) {
+  if (!oauthEnabled[method] || authStore.loadingMethod) return
+  void authStore.beginLogin(method)
+}
 
 function startTypingLoop() {
   let wordIndex = 0
@@ -197,23 +202,19 @@ onBeforeUnmount(() => {
               :key="method.id"
               type="button"
               class="method-btn"
-              :class="[method.accent, { 'is-soon': !oauthEnabled }]"
-              :disabled="!oauthEnabled"
-              :aria-disabled="!oauthEnabled"
+              :class="[method.accent, { 'is-soon': !oauthEnabled[method.id] }]"
+              :disabled="!oauthEnabled[method.id] || authStore.loadingMethod === method.id"
+              :aria-disabled="!oauthEnabled[method.id]"
+              @click="startOAuth(method.id)"
             >
               <span class="method-icon">
-                <!-- <svg v-if="method.icon === 'staff'" viewBox="0 0 24 24" role="presentation">
-                  <path
-                    d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-3.3 0-6 1.9-6 4.2V20h12v-1.8c0-2.3-2.7-4.2-6-4.2ZM19 6h-2V4h-2v2h-2v2h2v2h2V8h2V6Z"
-                  />
-                </svg>  -->
                 <img
                   v-if="method.icon === 'staff'"
                   src="/iconka.png"
                   alt="Hodimlar uchun login"
                   class="method-icon-image"
                 >
-                
+
                 <svg v-else-if="method.icon === 'student'" viewBox="0 0 24 24" role="presentation">
                   <path
                     d="m12 3 9 4.5-9 4.5L3 7.5 12 3Zm-6.9 7.1V14c0 2.1 3.1 3.8 6.9 3.8s6.9-1.7 6.9-3.8v-3.9L12 14l-6.9-3.9Z"
@@ -232,9 +233,12 @@ onBeforeUnmount(() => {
                 <small>{{ method.description }}</small>
               </span>
 
-              <span class="soon-badge">{{ m.login.soon }}</span>
+              <span v-if="authStore.loadingMethod === method.id" class="spinner-border spinner-border-sm" />
+              <span v-else-if="!oauthEnabled[method.id]" class="soon-badge">{{ m.login.soon }}</span>
             </button>
           </div>
+
+          <p v-if="authStore.oauthError" class="form-error">{{ authStore.oauthError }}</p>
 
           <p class="auth-foot">
             <svg viewBox="0 0 24 24" role="presentation">

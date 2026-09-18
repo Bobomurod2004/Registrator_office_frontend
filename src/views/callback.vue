@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { extractApiError } from '@/services/http'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -11,9 +12,12 @@ onMounted(async () => {
   const query = new URLSearchParams(window.location.search)
   try {
     await authStore.handleCallback(query)
-    await router.replace({ name: 'services' })
+    await router.replace({ path: authStore.homePath })
   } catch (err) {
-    errorMessage.value = err instanceof Error ? err.message : 'Kirish amalga oshmadi.'
+    // Backend qaytargan aniq sabab bo'lsa (masalan validatsiya xatosi) shuni,
+    // aks holda o'zimiz throw qilgan xabarni (masalan "kod topilmadi") ko'rsatamiz.
+    const backendDetail = extractApiError(err, '')
+    errorMessage.value = backendDetail || (err instanceof Error ? err.message : 'Kirish amalga oshmadi.')
   }
 })
 

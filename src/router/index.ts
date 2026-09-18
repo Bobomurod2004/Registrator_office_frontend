@@ -14,6 +14,19 @@ const routes = [
     component: () => import('@/views/callback.vue'),
   },
   {
+    // Backend HEMIS bilan shu manzillarni redirect_uri sifatida ro'yxatdan
+    // o'tkazgan (client_id=4/9) — /callback bilan bir xil komponent, chunki
+    // callback.vue query/sessionStorage'dan ishlaydi, path'ga bog'liq emas.
+    path: '/api/auth/callback/hemis',
+    name: 'hemis-staff-callback',
+    component: () => import('@/views/callback.vue'),
+  },
+  {
+    path: '/api/auth/callback/studentoauth',
+    name: 'hemis-student-callback',
+    component: () => import('@/views/callback.vue'),
+  },
+  {
     path: '/services',
     name: 'services',
     component: () => import('@/views/services.vue'),
@@ -29,7 +42,7 @@ const routes = [
     path: '/staff',
     name: 'staff',
     component: () => import('@/views/staff.vue'),
-    meta: { requiresAuth: true, staffOnly: true },
+    meta: { requiresAuth: true, adminOnly: true },
   },
   {
     path: '/statistics',
@@ -50,10 +63,28 @@ const routes = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/contacts',
+    name: 'contacts',
+    component: () => import('@/views/contacts.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/profile',
+    name: 'profile',
+    component: () => import('@/views/profile.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/settings',
     name: 'settings',
     component: () => import('@/views/settings.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, superAdminOnly: true },
+  },
+  {
+    path: '/audit-log',
+    name: 'audit-log',
+    component: () => import('@/views/audit-log.vue'),
+    meta: { requiresAuth: true, superAdminOnly: true },
   },
 ]
 
@@ -75,6 +106,14 @@ router.beforeEach((to) => {
 
   if (to.meta.staffOnly && !auth.isStaff) {
     return { name: 'services' }
+  }
+
+  if (to.meta.adminOnly && !auth.isAdmin) {
+    return { path: auth.homePath }
+  }
+
+  if (to.meta.superAdminOnly && !auth.isSuperAdmin) {
+    return { path: auth.homePath }
   }
 
   return true

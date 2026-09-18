@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useLocaleStore } from '@/stores/locale'
+import { isMobileMenuOpen, closeMobileMenu } from '@/composables/mobileNav'
 
 type IconName =
   | 'services'
@@ -10,6 +11,8 @@ type IconName =
   | 'staff'
   | 'stats'
   | 'grant'
+  | 'contacts'
+  | 'audit'
 
 interface MenuLink {
   to: string
@@ -26,38 +29,60 @@ const profileRole = computed(() =>
   authStore.isStaff ? m.value.roles.staff : m.value.roles.student,
 )
 const profileInitial = computed(() => profileName.value.charAt(0).toUpperCase())
+const profileImageUrl = computed(() => authStore.session?.imageUrl ?? null)
 
 const menuLinks = computed<MenuLink[]>(() =>
   authStore.isStaff
     ? [
         { to: '/statistics', label: m.value.menu.statistics, icon: 'stats' },
         { to: '/appeals', label: m.value.menu.appeals, icon: 'appeals' },
-        { to: '/staff', label: m.value.menu.addStaff, icon: 'staff' },
+        ...(authStore.isAdmin
+          ? [{ to: '/staff', label: m.value.menu.addStaff, icon: 'staff' as IconName }]
+          : []),
         { to: '/grant', label: m.value.menu.grant, icon: 'grant' },
         { to: '/info', label: m.value.menu.info, icon: 'info' },
+        { to: '/contacts', label: m.value.menu.contacts, icon: 'contacts' },
+        ...(authStore.isSuperAdmin
+          ? [{ to: '/audit-log', label: m.value.menu.auditLog, icon: 'audit' as IconName }]
+          : []),
       ]
     : [
         { to: '/services', label: m.value.menu.services, icon: 'services' },
         { to: '/appeals', label: m.value.menu.myAppeals, icon: 'appeals' },
         { to: '/info', label: m.value.menu.info, icon: 'info' },
+        { to: '/contacts', label: m.value.menu.contacts, icon: 'contacts' },
       ],
 )
+
+onMounted(closeMobileMenu)
 </script>
 
 <template>
   <div class="services-page">
     <div class="container-fluid py-4 px-3 px-lg-4">
       <div class="services-layout">
-        <aside class="services-sidebar">
-          <div class="sidebar-header">{{ m.brand.office }}</div>
+        <div
+          v-if="isMobileMenuOpen"
+          class="sidebar-backdrop"
+          @click="closeMobileMenu"
+        />
 
-          <div class="profile-card">
-            <span class="profile-avatar profile-avatar-initial">{{ profileInitial }}</span>
+        <aside class="services-sidebar" :class="{ 'is-open': isMobileMenuOpen }">
+          <div class="sidebar-header-row">
+            <div class="sidebar-header">{{ m.brand.office }}</div>
+            <button class="sidebar-close-btn" type="button" aria-label="Yopish" @click="closeMobileMenu">
+              ×
+            </button>
+          </div>
+
+          <router-link class="profile-card" to="/profile">
+            <img v-if="profileImageUrl" class="profile-avatar" :src="profileImageUrl" alt="" />
+            <span v-else class="profile-avatar profile-avatar-initial">{{ profileInitial }}</span>
             <div class="profile-meta">
               <strong>{{ profileName }}</strong>
               <span>{{ profileRole }}</span>
             </div>
-          </div>
+          </router-link>
 
           <nav class="sidebar-menu">
             <router-link
@@ -91,6 +116,16 @@ const menuLinks = computed<MenuLink[]>(() =>
                 <svg v-else-if="link.icon === 'stats'" viewBox="0 0 24 24" role="presentation">
                   <path d="M3 3h2v18H3V3Zm4 10h3v8H7v-8Zm5-6h3v14h-3V7Zm5 3h3v11h-3V10Z" />
                 </svg>
+                <svg v-else-if="link.icon === 'contacts'" viewBox="0 0 24 24" role="presentation">
+                  <path
+                    d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.6.1.4 0 .8-.3 1L6.6 10.8Z"
+                  />
+                </svg>
+                <svg v-else-if="link.icon === 'audit'" viewBox="0 0 24 24" role="presentation">
+                  <path
+                    d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Zm-1.2 13.2L7 11.4l1.4-1.4 2.4 2.4 4.8-4.8L17 9l-6.2 6.2Z"
+                  />
+                </svg>
                 <svg v-else viewBox="0 0 24 24" role="presentation">
                   <path d="m12 3 9 4.5-9 4.5L3 7.5 12 3Zm-6.9 7.1V14c0 2.1 3.1 3.8 6.9 3.8s6.9-1.7 6.9-3.8v-3.9L12 14l-6.9-3.9Z" />
                 </svg>
@@ -100,7 +135,17 @@ const menuLinks = computed<MenuLink[]>(() =>
           </nav>
 
           <nav class="sidebar-menu secondary">
-            <router-link class="menu-item" active-class="active" to="/settings">
+            <router-link class="menu-item" active-class="active" to="/profile">
+              <span class="menu-icon">
+                <svg viewBox="0 0 24 24" role="presentation">
+                  <path
+                    d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-3.3 0-6 1.9-6 4.2V20h12v-1.8c0-2.3-2.7-4.2-6-4.2Z"
+                  />
+                </svg>
+              </span>
+              <span>{{ m.menu.profile }}</span>
+            </router-link>
+            <router-link v-if="authStore.isSuperAdmin" class="menu-item" active-class="active" to="/settings">
               <span class="menu-icon">
                 <svg viewBox="0 0 24 24" role="presentation">
                   <path
