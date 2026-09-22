@@ -7,7 +7,8 @@ export interface StaffMember {
   id: number
   hemis_id: string
   full_name: string
-  role: BackendRole
+  role: number
+  role_code: BackendRole
   role_display: string
   department_name: string
   is_active: boolean
@@ -29,7 +30,8 @@ export interface EmployeeLookupResult {
     id: number
     hemis_id: string
     full_name: string
-    role: BackendRole
+    role: number
+    role_code: BackendRole
     role_display: string
     department_name: string
   }
@@ -38,10 +40,11 @@ export interface EmployeeLookupResult {
   position?: string
 }
 
+/** `role` endi Role ID (butun son) — backenddagi rollar tizimi o'zgarishi. */
 export interface CreateStaffPayload {
   employee_id_number: string
   full_name?: string
-  role: BackendRole
+  role: number
   department?: number | null
   email?: string
   phone?: string
@@ -72,7 +75,7 @@ export const useStaffStore = defineStore('staff', () => {
         url = data.next
         params = undefined
       }
-      members.value = all.filter((member) => member.role !== 'student')
+      members.value = all.filter((member) => member.role_code !== 'student')
     } catch {
       error.value = 'load'
     } finally {
@@ -111,7 +114,7 @@ export const useStaffStore = defineStore('staff', () => {
     members.value = members.value.filter((m) => m.id !== id)
   }
 
-  async function updateRole(id: number, role: BackendRole, password?: string) {
+  async function updateRole(id: number, role: number, password?: string) {
     await http.patch(`/api/v1/auth/users/${id}/role/`, {
       role,
       password: password || undefined,

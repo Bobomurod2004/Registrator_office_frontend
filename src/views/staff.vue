@@ -2,26 +2,32 @@
 import { computed, onMounted, ref } from 'vue'
 import DashboardLayout from '@/components/DashboardLayout.vue'
 import { useStaffStore, type EmployeeLookupResult } from '@/stores/staff'
+import { useRolesStore } from '@/stores/roles'
 import { useLocaleStore } from '@/stores/locale'
-import type { BackendRole } from '@/stores/auth'
 import { extractApiError } from '@/services/http'
 
 const staffStore = useStaffStore()
+const rolesStore = useRolesStore()
 const localeStore = useLocaleStore()
 const m = computed(() => localeStore.m)
 
-const ASSIGNABLE_ROLES: BackendRole[] = [
-  'operator',
-  'dekanat',
-  'accountant',
-  'science',
-  'international',
-  'department_admin',
-]
+/** Rollar endi SuperAdmin tomonidan dinamik boshqariladi (/api/v1/auth/roles/).
+ * Xodim qo'shish/tahrirlash oynasida `student` va `super_admin` kodli rollar
+ * ko'rsatilmaydi — talaba bu yerdan qo'shilmaydi, SuperAdmin roli esa
+ * xavfsizlik uchun shu umumiy forma orqali berilmaydi (avvalgi xatti-harakat). */
+const assignableRoles = computed(() =>
+  rolesStore.roles.filter((r) => r.code !== 'student' && r.code !== 'super_admin'),
+)
 
-/** Faqat shu rollar login+parol bilan kiradi — shu sabab parol maydoni faqat shularda ko'rsatiladi. */
-function isPasswordRole(role: BackendRole | '') {
-  return role === 'department_admin' || role === 'super_admin'
+function roleCodeById(id: number | ''): string {
+  if (!id) return ''
+  return rolesStore.roles.find((r) => r.id === id)?.code ?? ''
+}
+
+/** Faqat shu kodli rollar login+parol bilan kiradi — shu sabab parol maydoni faqat shularda ko'rsatiladi. */
+function isPasswordRole(roleId: number | '') {
+  const code = roleCodeById(roleId)
+  return code === 'department_admin' || code === 'super_admin'
 }
 
 const employeeId = ref('')
@@ -30,7 +36,7 @@ const searchError = ref('')
 const lookupResult = ref<EmployeeLookupResult | null>(null)
 
 const form = ref({
-  role: '' as BackendRole | '',
+  role: '' as number | '',
   department: '' as number | '',
   email: '',
   phone: '',
@@ -43,6 +49,7 @@ const createdMessage = ref(false)
 onMounted(() => {
   staffStore.fetchMembers()
   staffStore.fetchDepartments()
+  rolesStore.fetchRoles()
 })
 
 async function search() {
@@ -96,19 +103,15 @@ async function addStaff() {
   }
 }
 
-function roleLabel(role: BackendRole) {
-  return (m.value.staff.roles as Record<string, string>)[role] ?? role
-}
-
 const editingRoleId = ref<number | null>(null)
-const editingRoleValue = ref<BackendRole | ''>('')
+const editingRoleValue = ref<number | ''>('')
 const editingRolePassword = ref('')
 const roleSaving = ref(false)
 const roleError = ref('')
 
-function startEditRole(memberId: number, currentRole: BackendRole) {
+function startEditRole(memberId: number, currentRoleId: number) {
   editingRoleId.value = memberId
-  editingRoleValue.value = currentRole
+  editingRoleValue.value = currentRoleId
   editingRolePassword.value = ''
   roleError.value = ''
 }
@@ -213,8 +216,8 @@ async function confirmRemove(memberId: number) {
               <span class="select-wrap">
                 <select v-model="form.role" class="field-input">
                   <option value="" disabled>{{ m.staff.rolePlaceholder }}</option>
-                  <option v-for="role in ASSIGNABLE_ROLES" :key="role" :value="role">
-                    {{ roleLabel(role) }}
+                  <option v-for="role in assignableRoles" :key="role.id" :value="role.id">
+                    {{ role.name }}
                   </option>
                 </select>
                 <svg class="select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9" /></svg>
@@ -287,8 +290,8 @@ async function confirmRemove(memberId: number) {
                   <div class="role-edit-row">
                     <span class="select-wrap role-edit-select">
                       <select v-model="editingRoleValue" class="field-input">
-                        <option v-for="role in ASSIGNABLE_ROLES" :key="role" :value="role">
-                          {{ roleLabel(role) }}
+                        <option v-for="role in assignableRoles" :key="role.id" :value="role.id">
+                          {{ role.name }}
                         </option>
                       </select>
                       <svg class="select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9" /></svg>
@@ -323,6 +326,7 @@ async function confirmRemove(memberId: number) {
                   type="button"
                   :title="m.staff.editRole"
                   @click="startEditRole(member.id, member.role)"
+                  :disabled="!rolesStore.roles.length"
                 >
                   {{ member.role_display }}
                   <svg class="role-edit-icon" viewBox="0 0 24 24">

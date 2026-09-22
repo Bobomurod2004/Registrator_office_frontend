@@ -16,29 +16,21 @@ onMounted(() => {
   if (authStore.isStaff) gsStore.fetchAll()
 })
 
-/* Diqqat: backendda grant o'rinlari kvotasi (jami/band/bo'sh) uchun API mavjud
- * emas — bu KPI va "fakultetlar kesimida" jadval hozircha namuna (mock)
- * ma'lumot bilan ko'rsatilmoqda, API tayyor bo'lgach ulanadi. */
-const seats = [
-  { total: 120, used: 118 },
-  { total: 85, used: 80 },
-  { total: 60, used: 57 },
-  { total: 45, used: 45 },
-]
+/* ---------- HEMIS bilan sinxronlash (faqat admin) ---------- */
 
-const grantRows = computed(() =>
-  seats.map((s, idx) => ({
-    faculty: m.value.grant.faculties[idx] ?? '',
-    total: s.total,
-    used: s.used,
-  })),
-)
+const syncError = ref('')
+const syncedMsg = ref(false)
 
-const totals = computed(() => {
-  const total = seats.reduce((s, r) => s + r.total, 0)
-  const used = seats.reduce((s, r) => s + r.used, 0)
-  return { total, used, free: total - used }
-})
+async function syncHemisGrants() {
+  syncError.value = ''
+  try {
+    await gsStore.syncFromHemis()
+    syncedMsg.value = true
+    window.setTimeout(() => (syncedMsg.value = false), 4000)
+  } catch (err) {
+    syncError.value = extractApiError(err, m.value.grant.hemisSyncError)
+  }
+}
 
 /* ---------- Grant oluvchi talabalar ro'yxati (haqiqiy backend, filtr/tahrir/eksport) ---------- */
 
@@ -140,58 +132,25 @@ async function saveEdit(id: number) {
       </div>
     </div>
 
-    <div class="kpi-row">
-      <div class="kpi-card kpi-blue">
-        <strong>{{ totals.total }}</strong>
-        <span>{{ m.grant.totalSeats }}</span>
-      </div>
-      <div class="kpi-card kpi-green">
-        <strong>{{ totals.used }}</strong>
-        <span>{{ m.grant.used }}</span>
-      </div>
-      <div class="kpi-card kpi-amber">
-        <strong>{{ totals.free }}</strong>
-        <span>{{ m.grant.free }}</span>
-      </div>
-    </div>
-
-    <article class="chart-card">
-      <h3>{{ m.grant.byFaculty }}</h3>
-      <div class="staff-table-wrap">
-        <table class="staff-table">
-          <thead>
-            <tr>
-              <th>{{ m.grant.colFaculty }}</th>
-              <th>{{ m.grant.colTotal }}</th>
-              <th>{{ m.grant.colUsed }}</th>
-              <th>{{ m.grant.colFree }}</th>
-              <th>{{ m.grant.colFill }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in grantRows" :key="row.faculty">
-              <td>{{ row.faculty }}</td>
-              <td>{{ row.total }}</td>
-              <td>{{ row.used }}</td>
-              <td>{{ row.total - row.used }}</td>
-              <td>
-                <div class="progress-track sm">
-                  <div class="progress-fill" :style="{ width: `${(row.used / row.total) * 100}%` }" />
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </article>
-
     <!-- Grant oluvchi talabalar ro'yxati -->
     <div v-if="authStore.isStaff" class="info-header-row gs-header">
       <div>
         <h2 class="gs-title">{{ m.grant.studentsTitle }}</h2>
         <p class="services-subtitle">{{ m.grant.studentsSubtitle }}</p>
       </div>
+      <button
+        v-if="authStore.isAdmin"
+        type="button"
+        class="appeal-btn"
+        :disabled="gsStore.syncing"
+        @click="syncHemisGrants"
+      >
+        <span v-if="gsStore.syncing" class="spinner-border spinner-border-sm" />
+        {{ gsStore.syncing ? m.grant.hemisSyncing : m.grant.hemisSync }}
+      </button>
     </div>
+    <p v-if="authStore.isAdmin && syncedMsg" class="form-success">{{ m.grant.hemisSynced }}</p>
+    <p v-if="authStore.isAdmin && syncError" class="form-error">{{ syncError }}</p>
 
     <div v-if="authStore.isStaff" class="gs-filters">
       <label class="field gs-filter-field">

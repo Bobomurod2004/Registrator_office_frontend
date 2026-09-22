@@ -58,6 +58,7 @@ export const useGrantStudentsStore = defineStore('grantStudents', () => {
   const students = ref<GrantEntry[]>([])
   const loading = ref(false)
   const error = ref('')
+  const syncing = ref(false)
 
   async function fetchAll() {
     loading.value = true
@@ -88,5 +89,23 @@ export const useGrantStudentsStore = defineStore('grantStudents', () => {
     if (idx !== -1) students.value[idx] = normalize(data)
   }
 
-  return { students, loading, error, fetchAll, updateGrant }
+  /**
+   * Backend'ning o'zi HEMIS'dan grant talabalari ro'yxatini qayta tortib olib,
+   * o'z bazasiga yozadi (`POST /api/v1/auth/admin/hemis-sync/ {what: 'grants'}`
+   * — server konsolidagi `python manage.py sync_hemis --what grants` buyrug'i
+   * bilan bir xil ishni bajaradi, faqat HTTP orqali). 23K+ talabani qayta
+   * ishlashi mumkin bo'lgani uchun (~2-3 daqiqa) uzoqroq timeout beriladi.
+   * Muvaffaqiyatli tugagach, ro'yxat darhol qayta yuklanadi.
+   */
+  async function syncFromHemis(): Promise<void> {
+    syncing.value = true
+    try {
+      await http.post('/api/v1/auth/admin/hemis-sync/', { what: 'grants' }, { timeout: 5 * 60 * 1000 })
+      await fetchAll()
+    } finally {
+      syncing.value = false
+    }
+  }
+
+  return { students, loading, error, syncing, fetchAll, updateGrant, syncFromHemis }
 })

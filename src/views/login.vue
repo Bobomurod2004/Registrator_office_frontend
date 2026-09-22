@@ -210,7 +210,7 @@ onBeforeUnmount(() => {
               <span class="method-icon">
                 <img
                   v-if="method.icon === 'staff'"
-                  src="/iconka.png"
+                  src="/hemis-removebg-preview.png"
                   alt="Hodimlar uchun login"
                   class="method-icon-image"
                 >

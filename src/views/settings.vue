@@ -5,6 +5,7 @@ import { extractApiError } from '@/services/http'
 import { useLocaleStore } from '@/stores/locale'
 import { useSystemSettingsStore } from '@/stores/systemSettings'
 import { useStaffStore } from '@/stores/staff'
+import { useRolesStore, type Role, type RolePayload } from '@/stores/roles'
 import {
   useServicesStore,
   type Service,
@@ -20,11 +21,14 @@ const m = computed(() => localeStore.m)
 const settingsStore = useSystemSettingsStore()
 const servicesStore = useServicesStore()
 const staffStore = useStaffStore()
+const rolesStore = useRolesStore()
 
 onMounted(() => {
   settingsStore.fetchAll()
   servicesStore.fetchServices()
   staffStore.fetchDepartments()
+  rolesStore.fetchRoles()
+  rolesStore.fetchPermissionCatalog()
 })
 
 /* ---------- Tizim sozlamalari ---------- */
@@ -256,6 +260,102 @@ async function removeServiceEntry(id: number) {
     serviceDeleteErrorMsg.value = extractApiError(err, m.value.settings.serviceDeleteError)
   } finally {
     deletingServiceId.value = null
+  }
+}
+
+/* ---------- Rollar boshqaruvi ---------- */
+
+const permissionGroups = computed(() => {
+  const groups = new Map<string, { code: string; name: string }[]>()
+  for (const p of rolesStore.permissionCatalog) {
+    const key = p.category || m.value.settings.rolePermissionsLabel
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push({ code: p.code, name: p.name })
+  }
+  return Array.from(groups.entries())
+})
+
+const showRoleForm = ref(false)
+const editingRoleId = ref<number | null>(null)
+const roleForm = ref({ name: '', code: '', description: '' })
+const roleFormPermissions = ref<Set<string>>(new Set())
+const roleSaving = ref(false)
+const roleSaveErrorMsg = ref('')
+const roleSavedMsg = ref(false)
+
+function resetRoleForm() {
+  roleForm.value = { name: '', code: '', description: '' }
+  roleFormPermissions.value = new Set()
+  roleSaveErrorMsg.value = ''
+}
+
+function openAddRoleForm() {
+  editingRoleId.value = null
+  resetRoleForm()
+  showRoleForm.value = true
+}
+
+function openEditRoleForm(role: Role) {
+  editingRoleId.value = role.id
+  roleForm.value = { name: role.name, code: role.code, description: role.description }
+  roleFormPermissions.value = new Set(role.permissions)
+  roleSaveErrorMsg.value = ''
+  showRoleForm.value = true
+}
+
+function cancelRoleForm() {
+  showRoleForm.value = false
+  editingRoleId.value = null
+  roleSaveErrorMsg.value = ''
+}
+
+function togglePermission(code: string) {
+  const next = new Set(roleFormPermissions.value)
+  if (next.has(code)) next.delete(code)
+  else next.add(code)
+  roleFormPermissions.value = next
+}
+
+async function submitRoleForm() {
+  if (!roleForm.value.name.trim()) return
+
+  roleSaving.value = true
+  roleSaveErrorMsg.value = ''
+  try {
+    const payload: RolePayload = {
+      name: roleForm.value.name.trim(),
+      code: roleForm.value.code.trim() || undefined,
+      description: roleForm.value.description.trim() || undefined,
+      permissions: Array.from(roleFormPermissions.value),
+    }
+    if (editingRoleId.value) {
+      await rolesStore.updateRole(editingRoleId.value, payload)
+    } else {
+      await rolesStore.addRole(payload)
+    }
+    roleSavedMsg.value = true
+    window.setTimeout(() => (roleSavedMsg.value = false), 2500)
+    cancelRoleForm()
+  } catch (err) {
+    roleSaveErrorMsg.value = extractApiError(err, m.value.settings.roleSaveError)
+  } finally {
+    roleSaving.value = false
+  }
+}
+
+const deletingRoleId = ref<number | null>(null)
+const roleDeleteErrorMsg = ref('')
+
+async function removeRoleEntry(id: number) {
+  deletingRoleId.value = id
+  roleDeleteErrorMsg.value = ''
+  try {
+    await rolesStore.removeRole(id)
+    if (editingRoleId.value === id) cancelRoleForm()
+  } catch (err) {
+    roleDeleteErrorMsg.value = extractApiError(err, m.value.settings.roleDeleteError)
+  } finally {
+    deletingRoleId.value = null
   }
 }
 </script>
@@ -527,6 +627,130 @@ async function removeServiceEntry(id: number) {
       </div>
       <p v-if="serviceDeleteErrorMsg" class="form-error">{{ serviceDeleteErrorMsg }}</p>
     </article>
+
+    <article class="appeal-form system-settings-card">
+      <div class="info-header-row">
+        <div>
+          <h3>{{ m.settings.roleMgmtTitle }}</h3>
+          <p class="services-subtitle">{{ m.settings.roleMgmtSubtitle }}</p>
+        </div>
+        <button v-if="!showRoleForm" type="button" class="submit-btn" @click="openAddRoleForm">
+          {{ m.settings.roleAdd }}
+        </button>
+      </div>
+
+      <form v-if="showRoleForm" class="appeal-form service-form" @submit.prevent="submitRoleForm">
+        <h3>{{ editingRoleId ? m.settings.roleEditTitle : m.settings.roleAddTitle }}</h3>
+
+        <div class="service-form-grid">
+          <label class="field">
+            <span class="field-label">{{ m.settings.roleNameLabel }}</span>
+            <input
+              v-model="roleForm.name"
+              type="text"
+              class="field-input"
+              :placeholder="m.settings.roleNamePlaceholder"
+            />
+          </label>
+
+          <label class="field">
+            <span class="field-label">{{ m.settings.roleCodeLabel }}</span>
+            <input
+              v-model="roleForm.code"
+              type="text"
+              class="field-input"
+              :disabled="!!editingRoleId"
+              :placeholder="m.settings.roleCodePlaceholder"
+            />
+            <small class="field-hint">{{ m.settings.roleCodeHint }}</small>
+          </label>
+        </div>
+
+        <label class="field">
+          <span class="field-label">{{ m.settings.roleDescriptionLabel }}</span>
+          <textarea v-model="roleForm.description" class="field-input service-textarea" rows="2" />
+        </label>
+
+        <div class="field">
+          <span class="field-label">{{ m.settings.rolePermissionsLabel }}</span>
+          <p v-if="rolesStore.catalogLoading" class="appeal-empty">{{ m.settings.loadingList }}</p>
+          <p v-else-if="rolesStore.catalogError" class="form-error">{{ rolesStore.catalogError }}</p>
+          <p v-else-if="!permissionGroups.length" class="appeal-empty">{{ m.settings.rolePermissionsEmpty }}</p>
+          <div v-else class="role-permission-groups">
+            <div v-for="[category, perms] in permissionGroups" :key="category" class="role-permission-group">
+              <h4 class="service-lang-heading">{{ category }}</h4>
+              <div class="service-checkbox-row">
+                <label v-for="p in perms" :key="p.code" class="gs-checkbox-field">
+                  <input
+                    type="checkbox"
+                    :checked="roleFormPermissions.has(p.code)"
+                    @change="togglePermission(p.code)"
+                  />
+                  {{ p.name }}
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="info-form-actions">
+          <button type="submit" class="submit-btn" :disabled="roleSaving">
+            <span v-if="roleSaving" class="spinner-border spinner-border-sm" />
+            <span>{{ m.settings.roleSave }}</span>
+          </button>
+          <button type="button" class="appeal-btn" @click="cancelRoleForm">{{ m.settings.roleCancel }}</button>
+        </div>
+        <p v-if="roleSaveErrorMsg" class="form-error">{{ roleSaveErrorMsg }}</p>
+      </form>
+
+      <p v-if="roleSavedMsg" class="form-success">{{ m.settings.roleSaved }}</p>
+      <p v-if="rolesStore.error" class="form-error">{{ rolesStore.error }}</p>
+      <p v-if="rolesStore.loading" class="appeal-empty">{{ m.settings.loadingList }}</p>
+
+      <div v-if="!rolesStore.loading" class="staff-table-wrap">
+        <table class="staff-table">
+          <thead>
+            <tr>
+              <th>{{ m.settings.colRoleName }}</th>
+              <th>{{ m.settings.colRoleCode }}</th>
+              <th>{{ m.settings.colRolePermissions }}</th>
+              <th>{{ m.settings.colRoleUsers }}</th>
+              <th>{{ m.grant.colActions }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="role in rolesStore.roles" :key="role.id">
+              <td>
+                {{ role.name }}
+                <span v-if="role.isSystem" class="role-system-badge">{{ m.settings.roleSystemBadge }}</span>
+              </td>
+              <td>{{ role.code }}</td>
+              <td>{{ role.permissions.length }}</td>
+              <td>{{ role.usersCount }}</td>
+              <td>
+                <div class="gs-row-actions">
+                  <button type="button" class="btn appeal-btn" @click="openEditRoleForm(role)">
+                    {{ m.grant.editScore }}
+                  </button>
+                  <button
+                    type="button"
+                    class="btn appeal-btn req-cancel-btn"
+                    :disabled="deletingRoleId === role.id"
+                    @click="removeRoleEntry(role.id)"
+                  >
+                    {{ m.settings.systemSettingDelete }}
+                  </button>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="!rolesStore.roles.length">
+              <td colspan="5" class="contact-empty">{{ m.settings.roleEmpty }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p v-if="roleDeleteErrorMsg" class="form-error">{{ roleDeleteErrorMsg }}</p>
+    </article>
   </DashboardLayout>
 </template>
 
@@ -603,5 +827,41 @@ async function removeServiceEntry(id: number) {
   .system-setting-add-row {
     grid-template-columns: 1fr;
   }
+}
+
+.role-permission-groups {
+  display: grid;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.role-permission-group {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(193, 211, 240, 0.7);
+  background: rgba(47, 109, 255, 0.03);
+}
+
+:root[data-theme='dark'] .role-permission-group {
+  border-color: rgba(84, 109, 154, 0.55);
+  background: rgba(110, 160, 255, 0.06);
+}
+
+.role-system-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #2f6dff;
+  background: rgba(47, 109, 255, 0.1);
+}
+
+:root[data-theme='dark'] .role-system-badge {
+  color: #8fb4ff;
+  background: rgba(110, 160, 255, 0.14);
 }
 </style>

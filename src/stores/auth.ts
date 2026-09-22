@@ -10,6 +10,7 @@ export interface UserSession {
   id: string
   name: string
   role: string
+  roleId: number | null
   roleCode: BackendRole | null
   kind: AccountKind
   method: AuthMethod | 'demo'
@@ -18,6 +19,14 @@ export interface UserSession {
   imageUrl?: string | null
 }
 
+/**
+ * Tizimning asosiy (built-in) rol kodlari — kirish usuli (login+parol vs
+ * HEMIS OAuth) va asosiy huquq darajalarini shular aniqlaydi. SuperAdmin
+ * `/api/v1/auth/roles/` orqali qo'shimcha (custom) rollar yaratishi ham
+ * mumkin — ularning kodi bu ro'yxatda bo'lmasligi mumkin, shu sabab
+ * `role_code` maydonining o'zi bu turdan kengroq (string) — bu yerdagi
+ * qiymatlar faqat taqqoslash uchun ishlatiladigan ma'lum kodlar.
+ */
 export type BackendRole =
   | 'student'
   | 'operator'
@@ -28,12 +37,18 @@ export type BackendRole =
   | 'department_admin'
   | 'super_admin'
 
-/** Backenddagi RoleEnum qiymatlari (api/v1/auth/login/ va /auth/me/ shu formatda qaytaradi). */
+/**
+ * Backenddagi RoleEnum (api/v1/auth/login/ va /auth/me/ shu formatda qaytaradi).
+ * MUHIM (backend'dagi buzuvchi o'zgarish): `role` endi matn emas, Role ID
+ * (butun son) — dasturiy taqqoslash uchun endi `role_code` ishlatiladi,
+ * o'qiladigan nom uchun esa avvalgidek `role_display`.
+ */
 export interface BackendUser {
   id: number
   hemis_id: string
   full_name: string
-  role: BackendRole
+  role: number
+  role_code: BackendRole
   role_display: string
 }
 
@@ -70,8 +85,8 @@ const HEMIS_ENDPOINTS: Record<HemisMethod, { redirect: string; callback: string 
  * qiymat). HEMIS "Talaba" OAuth endpointi orqali kirish — bu sof talaba ekanining
  * eng ishonchli belgisi, shu sabab u `role`dan ustuvor olinadi.
  */
-function resolveKind(role: BackendRole, method: AuthMethod): AccountKind {
-  return method === 'student' || role === 'student' ? 'student' : 'staff'
+function resolveKind(roleCode: BackendRole, method: AuthMethod): AccountKind {
+  return method === 'student' || roleCode === 'student' ? 'student' : 'staff'
 }
 
 function toSession(
@@ -84,8 +99,9 @@ function toSession(
     id: String(user.id),
     name: user.full_name || user.hemis_id,
     role: user.role_display,
-    roleCode: user.role,
-    kind: resolveKind(user.role, method),
+    roleId: user.role,
+    roleCode: user.role_code,
+    kind: resolveKind(user.role_code, method),
     method,
     accessToken,
     refreshToken,
@@ -134,8 +150,9 @@ export const useAuthStore = defineStore('auth', () => {
       ...session.value,
       name: user.full_name || user.hemis_id,
       role: user.role_display,
-      roleCode: user.role,
-      kind: resolveKind(user.role, session.value.method === 'demo' ? 'staff' : session.value.method),
+      roleId: user.role,
+      roleCode: user.role_code,
+      kind: resolveKind(user.role_code, session.value.method === 'demo' ? 'staff' : session.value.method),
     })
   }
 

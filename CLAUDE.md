@@ -1037,5 +1037,44 @@ Foydalanuvchi: "nega frontentda tizim student hodim deb olib tizimga hodim deb k
 
 ---
 
+## 2026-09-22
+
+### 55. BUZUVCHI backend o'zgarishi: `role` endi Role ID (son) — butun loyiha moslashtirildi; SuperAdmin uchun yangi "Rollar boshqaruvi" (dinamik rollar + ruxsatlar) qo'shildi
+Foydalanuvchi backend tarafdagi rejalashtirilgan (dev bazada allaqachon faol) o'zgarishlar haqida xabar berdi: (1) `role` maydoni barcha foydalanuvchi javoblarida (`POST /users/create/`, `PATCH /users/{id}/role/`, `/auth/me/`, `/users/`, login javobi) endi matn (`"operator"`) emas, Role ID (butun son, masalan `2`) — o'rniga dasturiy taqqoslash uchun yangi `role_code` (masalan `"operator"`) va o'qiladigan nom uchun `role_display` maydonlari qo'shildi; (2) yangi rollarni boshqarish endpointlari (`GET/POST /api/v1/auth/roles/`, `GET/PUT/PATCH/DELETE /api/v1/auth/roles/{id}/`, `GET /api/v1/auth/roles/permission-catalog/`) — faqat SuperAdmin/`manage_roles` uchun; (3) Statistika endpointlari o'zgarishsiz (avvalgi sessiyada to'liq tasdiqlangan); (4) Grant (davlat granti) — endpoint/javob shakli o'zgarmadi, faqat productionda `sync_hemis --what grants` ishga tushgandan keyin haqiqiy ma'lumot bilan to'ladi (frontendda o'zgartirish shart emas edi, [28-band]dagi `GrantSerializer` maydon nomlari allaqachon mos edi — tasdiqlandi).
+
+**Muhim:** deploy paytidagi ishlar (`.env`ga `HEMIS_GRANT_PAYMENT_FORM_CODE`, migratsiya, `sync_hemis --what grants`) — bular backend/server tarafidagi ishlar, foydalanuvchining o'zi keyinroq bajaradi, bu safar frontend tomoni tayyorlandi.
+
+**1. `role` → Role ID o'tishi (butun loyiha bo'yicha moslashtirildi):**
+- [`src/stores/auth.ts`](src/stores/auth.ts) — `BackendUser.role: number` (avval `BackendRole` matn edi), yangi `BackendUser.role_code: BackendRole` qo'shildi (dasturiy taqqoslash uchun — `BackendRole` matn-literal turi endi shu maydonni tiplaydi, `role`ning o'zini emas). `UserSession`ga `roleId: number | null` qo'shildi, `roleCode` endi `user.role_code`dan (avval `user.role`dan) to'ldiriladi. `resolveKind()`, `toSession()`, `syncProfile()` — barchasi `user.role_code`ga o'tkazildi (`isAdmin`/`isSuperAdmin` computed'lari o'zgarishsiz qoldi, chunki ular `session.roleCode`ga tayanadi — bu maydon endi to'g'ri manbadan to'ladi).
+- [`src/stores/staff.ts`](src/stores/staff.ts) — `StaffMember.role: number` + yangi `role_code: BackendRole`; `CreateStaffPayload.role: number`; `updateRole(id, role: number, password?)`; `fetchMembers()`dagi talaba-filtri endi `member.role_code !== 'student'` (avval `member.role !== 'student'`).
+- [`src/views/staff.vue`](src/views/staff.vue) — hardcoded `ASSIGNABLE_ROLES` massivi va statik `roleLabel()`/`m.staff.roles` xaritasi butunlay olib tashlandi (endi pastga qarang — dinamik rollar ro'yxatidan foydalanadi). `form.role`/`editingRoleValue` endi `number | ''` (Role ID), `isPasswordRole()` endi tanlangan Role ID'ning kodini (`department_admin`/`super_admin`) qidiradi.
+- [`src/i18n/messages.ts`](src/i18n/messages.ts) — endi ishlatilmaydigan `staff.roles.*` statik rol nomlari uchala tildan (`uz`/`ru`/`en`) olib tashlandi (backend endi har bir rol uchun `name`/`role_display` qaytaradi, frontendda dublikat tarjima shart emas).
+
+**2. Yangi: SuperAdmin uchun "Rollar boshqaruvi" — to'liq CRUD + ruxsatlar (permission) checkbox paneli:**
+- **Yaratildi:** [`src/stores/roles.ts`](src/stores/roles.ts) — `useRolesStore` (`info.ts`/`services.ts` bilan bir xil naqsh: sahifalab to'liq ro'yxat yig'ish, `normalize()` orqali xato-bardosh o'qish). Rol obyektining va ruxsatlar katalogining aniq maydon nomlari Swagger'da hujjatlashtirilmagan ("No response body") — shu sabab bir nechta ehtimoliy nom moslashuvchan tarzda sinaladi (`name`/`title`/`role_display`, `code`/`role_code`/`slug`, `permissions`/`permission_codes`, kategoriya bo'yicha guruhlangan yoki tekis massiv — barcha ko'rinishlar `node`da mustaqil sinaldi, xato tashlamasligi tasdiqlandi).
+- [`src/views/settings.vue`](src/views/settings.vue) — mavjud "Xizmatlar boshqaruvi" bilan bir xil uslubda (SuperAdmin route allaqachon `superAdminOnly` bilan himoyalangan) yangi **"Rollar boshqaruvi"** kartasi qo'shildi: yangi rol qo'shish (nomi, kodi — faqat yaratishda tahrirlanadi, tavsif) + ruxsatlar katalogidan kategoriya bo'yicha guruhlangan checkbox paneli; ro'yxat jadvali (nomi, kodi, ruxsatlar soni, xodimlar soni, tahrirlash/o'chirish). Tizim rollari (`is_system`) belgi bilan ko'rsatiladi.
+- [`src/views/staff.vue`](src/views/staff.vue) — "Xodim qo'shish" va "Rolni tahrirlash" endi `rolesStore.roles`dan dinamik ro'yxatni oladi (`student` va `super_admin` kodli rollar bu formadan chiqarib tashlanadi — avvalgi xavfsizlik cheklovi saqlandi).
+- [`src/i18n/messages.ts`](src/i18n/messages.ts) — uchala tilga (`uz`/`ru`/`en`) `settings.role*`/`settings.colRole*` bloki (~24 ta yangi kalit) qo'shildi.
+
+**Yon tuzatish:** commit qilinmagan holda qolgan [`login.vue`](src/views/login.vue)dagi rasm manzili xatosi (`src="/public/hemis-removebg-preview.png"`) ham tuzatildi — Vite'da `public/` ichidagi fayllar root'ga chiqadi, to'g'ri yo'l `/hemis-removebg-preview.png` (aynan shu xato turi avval [3-band]da ham bo'lgan).
+
+**Sinov:** `npx vue-tsc --noEmit` va `npm run build` ikkalasi ham xatosiz o'tdi. Yangi `roles.ts` store'idagi barcha `normalize*` funksiyalari Node orqali bir nechta ehtimoliy backend javob shakli (tekis massiv, guruhlangan, `{results:[...]}`, `null`/`undefined`) bilan mustaqil sinaldi — hech biri xato tashlamadi. Login sahifasidagi rasm tuzatishi brauzerda jonli tekshirildi — `/hemis-removebg-preview.png` endi `200 OK` bilan to'g'ri yuklanishi tasdiqlandi. **Haqiqiy SuperAdmin kredensiallari bu muhitda mavjud emasligi sababli**, yangi Rollar boshqaruvi UI'sini (va yangilangan Xodim qo'shish oynasini) to'liq jonli backend javobi bilan sinab bo'lmadi — `/api/v1/auth/roles/` va `/permission-catalog/` javob shakli haqiqiy production/dev backend bilan hali tasdiqlanmagan. Agar backend Role obyekti yoki ruxsatlar katalogini yuqorida taxmin qilingan nomlardan boshqacha shaklda qaytarsa, faqat [`src/stores/roles.ts`](src/stores/roles.ts) ichidagi `normalizeRole()`/`normalizePermissionCatalog()` funksiyalarini tuzatish kifoya bo'ladi. Iltimos, SuperAdmin hisobi bilan kirib, "Sozlamalar" sahifasidagi yangi "Rollar boshqaruvi" bo'limini va "Xodimlar" sahifasidagi yangilangan rol tanlash oynalarini tekshirib ko'ring — agar rollar ro'yxati bo'sh chiqsa yoki noto'g'ri ma'lumot ko'rsatilsa, aniq nima ko'rinayotganini ayting, shu asosda tezda tuzataman.
+
+---
+
+### 56. Grant ro'yxatiga "HEMIS bilan sinxronlash" tugmasi qo'shildi (admin serverga kirmasdan)
+Foydalanuvchi grant ro'yxatining qanday to'lishini so'radi (`GET /api/v1/auth/grants/` o'zi HEMIS'ga bormaydi, faqat backend bazasini o'qiydi — sinxronizatsiya alohida jarayon). Tushuntirish paytida shu narsa aniq bo'ldi: sinxronizatsiyani ishga tushirishning ikkinchi yo'li — `POST /api/v1/auth/admin/hemis-sync/ {"what": "grants"}` — bu oddiy HTTP endpoint, ya'ni admin serverga SSH/terminal orqali kirib `sync_hemis` buyrug'ini qo'lda yozishi shart emas, frontendga tugma sifatida ulash mumkin edi.
+
+**Diqqat — sinov paytida foydalanuvchi login/parolni to'g'ridan-to'g'ri chatga yozdi:** bu ishlatilmadi (xavfsizlik qoidasi — Claude parollardan foydalanib tizimga kira olmaydi, hatto foydalanuvchining o'zi ruxsat bergan/so'ragan taqdirda ham). Foydalanuvchiga bu parolni almashtirib qo'yish tavsiya qilindi va localda o'zi sinab ko'rishga yo'naltirildi.
+
+**O'zgartirilgan fayllar:**
+- [`src/stores/grantStudents.ts`](src/stores/grantStudents.ts) — yangi `syncing` state va `syncFromHemis()` action qo'shildi (`POST /api/v1/auth/admin/hemis-sync/ {what: 'grants'}`, 23K+ talabani qayta ishlashi mumkinligi uchun 5 daqiqalik uzaytirilgan timeout, muvaffaqiyatli tugagach `fetchAll()` avtomatik qayta chaqiriladi).
+- [`src/views/grant.vue`](src/views/grant.vue) — "Grant oluvchi talabalar" sarlavhasi yoniga, **faqat `authStore.isAdmin`** (Bo'lim ma'muri/SuperAdmin — endpoint tavsifiga mos) uchun "HEMIS bilan sinxronlash" tugmasi qo'shildi, bosilganda spinner + "Sinxronlanmoqda..." matni, muvaffaqiyat/xato xabarlari bilan.
+- [`src/i18n/messages.ts`](src/i18n/messages.ts) — uchala tilga (`uz`/`ru`/`en`) `grant.hemisSync`/`hemisSyncing`/`hemisSynced`/`hemisSyncError` kalitlari qo'shildi.
+
+**Sinov:** `npx vue-tsc --noEmit` va `npm run build` ikkalasi ham xatosiz o'tdi. Haqiqiy kredensiallar berilmagani (xavfsizlik siyosati sababli ishlatilmagani) uchun tugma jonli sinalmadi — foydalanuvchiga o'zi localda (login+parol bilan, admin sifatida) tekshirib ko'rish tavsiya etildi.
+
+---
+
 ## Qoida
 Bundan keyingi har bir o'zgarishda ushbu faylga yangi sana ostida: nima qilingani, sababi va o'zgartirilgan fayllar ro'yxati qo'shiladi.
