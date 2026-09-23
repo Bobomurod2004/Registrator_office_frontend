@@ -1076,5 +1076,157 @@ Foydalanuvchi grant ro'yxatining qanday to'lishini so'radi (`GET /api/v1/auth/gr
 
 ---
 
+### 57. Grant sahifasi: backend'ning to'liq dokumentatsiyasiga moslab qayta qurildi — server-taraf pagination/qidiruv/saralash, HEMIS sinxronizatsiyasi esa haqiqiy sahifalab-chaqirish algoritmiga o'zgartirildi
+Foydalanuvchi backenddan olingan to'liq, aniq dokumentatsiya yubordi: (1) `GET /api/v1/auth/grants/` uchun barcha query-parametrlar (`page`, `page_size`, `status`, `search`, `ordering`, `student__student_profile__department`) va ko'rsatish bo'yicha qoidalar (`gpa="0.00"` → "Hali baho yo'q", `phone` ko'pincha `null`, `gpa_updated_at` "oxirgi yangilangan" sifatida); (2) `PATCH .../grants/{id}/` — `gpa` maydoni **faqat o'qish uchun** bo'lishi kerak (har tuni HEMIS'dan qayta yoziladi), `total_score` backend'da o'zi qayta hisoblanadi; (3) **[56-band]dagi HEMIS sinxronizatsiya implementatsiyasi noto'g'ri edi** — bitta `POST .../hemis-sync/ {what:'grants'}` so'rovi bilan hammasi sinxronlanadi deb taxmin qilingan edi, aslida backend **sahifalab** (`page`+`limit` bilan, server 120 soniyalik so'rov limiti sababli) chaqirilishi kerak ekan, progress kuzatilishi, xato bo'lsa qaysi sahifada to'xtaganini saqlab "Davom ettirish" imkoniyati berilishi, va jarayon davomida "To'xtatish" tugmasi ko'rsatilishi kerak.
+
+**1. Grant ro'yxati — client-taraf "hammasini yig'ib, keyin filtrlash" dan server-taraf pagination'ga o'tkazildi:**
+Avvalgi [28-band]dagi yondashuv — `fetchAll()` barcha sahifalarni (`page_size:100` bilan) to'liq yig'ib, keyin brauzerda filtrlash — `count: 5759`+ kabi haqiqiy hajmda **taxminan 58 ta so'rov** talab qilar edi, bu backend hujjatida tasvirlangan arxitekturaga (server-taraf qidiruv/saralash/filtr) mutlaqo mos emas edi.
+
+**O'zgartirilgan fayllar:**
+- [`src/stores/grantStudents.ts`](src/stores/grantStudents.ts) — to'liq qayta yozildi:
+  - `fetchAll(filters)` endi **bitta sahifani** server-taraf `page`/`page_size`/`status`/`search`/`ordering`/`student__student_profile__department` parametrlari bilan yuklaydi (standart `page_size: 10`, backend tavsifiga mos); `count`/`page`/`hasNext`/`hasPrevious` state'lari [`audit.ts`](src/stores/audit.ts) store'idagi bilan bir xil naqshda qo'shildi.
+  - Yangi `fetchAllForExport(filters)` — Excel eksporti uchun **joriy filtrlar bo'yicha barcha sahifalarni** (backend maksimal `page_size:100` bilan) alohida yig'ib beradi — ekrandagi bitta sahifa emas, to'liq ro'yxat eksport qilinishi saqlanib qoldi.
+  - `UpdateGrantPayload`dan `gpa` maydoni butunlay olib tashlandi — endi hech qachon PATCH orqali yuborilmaydi (backend tavsifiga mos: "gpa maydonini formada faqat o'qish uchun qiling").
+  - `syncFromHemis()` **butunlay qayta yozildi** — foydalanuvchi bergan aniq algoritmga mos: `page`/`limit=200` bilan navbatma-navbat chaqiradi, har chaqiruvdan keyin `created`/`updated`/`deactivated`ni yig'adi va progress (`syncPage`/`syncTotalPages`) yangilaydi, `r.error` kelsa qaysi sahifada to'xtaganini (`syncFailedPage`) saqlab xato tashlaydi (shu sahifadan `syncFromHemis(failedPage)` bilan qayta boshlash mumkin), `stopSync()` chaqirilsa (`syncStopRequested`) joriy sahifa tugagach jarayon to'xtaydi (so'rov o'rtasida uzilmaydi — server holatini buzmaslik uchun).
+- [`src/views/grant.vue`](src/views/grant.vue) — to'liq qayta yozildi:
+  - Fakultet filtri endi matn emas, `staffStore.departments`dan bo'lim tanlaydi (ID orqali, backend `student__student_profile__department` parametriga mos); Holat filtri standart holatda `active` (backend tavsifiga mos: "Ro'yxat sahifasida doim shu filtr bilan chaqiring"); yangi Saralash (`ordering`) tanlovi qo'shildi (umumiy ball/GPA/yangilangan sana, o'sish/kamayish); Qidiruv maydoni endi 400ms kechikish bilan serverga so'rov yuboradi (avvalgi client-taraf filtrlash o'rniga).
+  - Jadval ostiga [`audit-log.vue`](src/views/audit-log.vue)dagi bilan bir xil `.audit-pagination` uslubidagi Oldingi/Keyingi sahifa navigatsiyasi qo'shildi.
+  - GPA ustuni endi hech qachon tahrirlanmaydi (input olib tashlandi, doim faqat matn + tushuntiruvchi tooltip), `"0.00"` qiymat "Hali baho yo'q" deb ko'rsatiladi; Telefon `null` bo'lsa "—" ko'rsatiladi.
+  - "HEMIS bilan sinxronlash" tugmasi endi bosilganda progress panel ko'rsatadi: joriy/jami sahifa, progress-bar, yig'ilgan `created`/`updated`/`deactivated` sonlari, "To'xtatish" tugmasi. Xato bo'lsa (`gsStore.syncFailedPage`) asosiy tugma "Davom ettirish"ga aylanadi va aynan o'sha sahifadan qayta boshlaydi.
+- [`src/style.css`](src/style.css) — yangi `.gs-sync-progress`/`.gs-sync-progress-head`/`.gs-sync-page`/`.gs-sync-stop`/`.gs-sync-totals` klasslari qo'shildi (yorug'/qorong'i tema), mavjud `.audit-pagination` qayta ishlatildi (dublikat CSS yozilmadi).
+- [`src/i18n/messages.ts`](src/i18n/messages.ts) — uchala tilga (`uz`/`ru`/`en`) ~20 ta yangi `grant.*` kaliti qo'shildi (saralash label'lari, sinxronizatsiya progress matnlari, GPA "hali yo'q"/tushuntirish tooltip); `searchLabel` "F.I.Sh. / HEMIS ID / Telefon"ga yangilandi (backend qidiruv qamrovi kengroq ekanini aks ettirish uchun).
+
+**Diqqat — ataylab qamrovga kiritilmagan:** foydalanuvchi xabarida `students` (talabalar) sinxronizatsiyasi ham tilga olingan edi ("Talabalar: ~232 ta chaqiruv"), lekin bu boshqa sahifa/funksiyaga tegishli bo'lishi mumkin va foydalanuvchi aniq qayerda ko'rsatilishi kerakligini aytmagan — shu sabab bu safar faqat Grant sahifasidagi `grants` sinxronizatsiyasi ulandi, `students`ga tegilmadi (kerak bo'lsa alohida so'ralganda qo'shiladi).
+
+**Sinov:** `npx vue-tsc --noEmit` va `npm run build` ikkalasi ham xatosiz o'tdi. Sinxronizatsiya (pagination/xato/davom-ettirish/to'xtatish) mantig'i mustaqil Node skriptida 4 ta stsenariy (muvaffaqiyatli, xato bilan, xatodan keyin davom ettirish, qo'lda to'xtatish) bilan sinaldi — barchasi kutilgan natijani berdi. Brauzerda dev-server orqali login sahifasi konsolida xato yo'qligi tasdiqlandi. **Foydalanuvchi hozir localhostda o'zi Docker build qilayotgani sababli**, to'liq jonli oqim (real ma'lumot bilan ro'yxat, filtrlar, sinxronizatsiya progress) hali jonli sinalmadi — iltimos, "Ta'lim granti" sahifasini localda tekshirib ko'ring, ayniqsa: (a) sahifalash to'g'ri ishlashi (Keyingi/Oldingi), (b) sinxronizatsiya progress-bar va "Davom ettirish" (agar xato simulyatsiya qilinsa) to'g'ri ko'rsatilishi, (c) `POST /api/v1/auth/admin/hemis-sync/` javobi aynan `{synced: {grants: {created, updated, deactivated, has_more, total_pages, error?}}}` shaklida kelayotganini — agar boshqacha bo'lsa, faqat [`src/stores/grantStudents.ts`](src/stores/grantStudents.ts) ichidagi `syncFromHemis()` funksiyasini tuzatish kifoya bo'ladi.
+
+---
+
+### 58. Fakultet filtri to'g'irlandi — endi maxsus `/departments/faculties/` endpointidan foydalanadi (avval barcha bo'limlarni ko'rsatib yuborardi)
+[57-band]da Fakultet filtri `staffStore.departments` (`GET /api/v1/departments/`) orqali to'ldirilgan edi — bu endpoint xodimlarga rol berishda ishlatiladigan **barcha** tashkiliy bo'limlarni (buxgalteriya, xalqaro aloqalar va h.k.) qaytaradi, faqat akademik fakultetlarni emas. Foydalanuvchi buni sinab ko'rib, ro'yxatda kutilgan 8 ta fakultet o'rniga ancha ko'p element chiqib ketganini payqadi.
+
+**Backend tomonidan aniqlashtirildi va yangi endpoint chiqarildi:**
+```
+GET /api/v1/departments/faculties/  → sahifalanmagan oddiy massiv:
+  [{ id, name_uz, name_ru, name_en, students_count }, ...]  — FAQAT fakultetlar
+Grantlarni filtrlash: GET /api/v1/auth/grants/?student__student_profile__department=<faculty.id>
+```
+Bundan tashqari, `/api/v1/departments/` javobidagi har bir bo'limda endi `structure_type_name` ("Fakultet"/"Kafedra"/"Bo'lim"...) maydoni ham bor — lekin foydalanuvchi buni "fakultet ro'yxati uchun `/departments/` ishlatmang" deb aniq ogohlantirgani sabab, Grant sahifasidagi filtr uchun bu maydondan foydalanilmadi, o'rniga yangi maxsus endpoint ulandi (kelajakda `/departments/` ro'yxatida "Fakultet" turlarini ajratish kerak bo'lib qolsa, shu maydon foydali bo'ladi).
+
+**O'zgartirilgan fayllar:**
+- [`src/stores/grantStudents.ts`](src/stores/grantStudents.ts) — yangi `Faculty` interfeysi (`id, name_uz, name_ru, name_en, studentsCount`) va `fetchFaculties()` action qo'shildi (`GET /api/v1/departments/faculties/`, sahifalanmagan massiv — `Array.isArray(data)` orqali xavfsiz o'qiladi).
+- [`src/views/grant.vue`](src/views/grant.vue) — Fakultet filtri endi `staffStore.departments` o'rniga `gsStore.faculties`dan to'ladi (`staffStore` importi butunlay olib tashlandi — endi bu sahifada kerak emas); yangi `facultyLabel()` funksiyasi joriy interfeys tiliga qarab (`name_ru`/`name_en` bo'sh bo'lsa `name_uz`ga tushib) nomni tanlaydi.
+
+**Sinov:** `npx vue-tsc --noEmit` va `npm run build` xatosiz o'tdi. `normalizeFaculty()` funksiyasi foydalanuvchi bergan aniq namuna javob (`Ingliz filologiyasi fakulteti`/`Tarjimonlik fakulteti`) bilan Node orqali sinaldi — to'g'ri map qilinishi tasdiqlandi. Foydalanuvchi backendni qayta deploy qilayotgani sababli, bu ham hali jonli login bilan sinalmadi.
+
+---
+
+### 59. Talaba qidiruv umuman yangi endpointga o'tkazildi (ism/familiya bo'yicha, ko'p natijali), fakultet ro'yxatidan bo'sh fakultetlar yashirildi, HEMIS sinxronizatsiya javobiga yangi maydonlar qo'shildi
+Foydalanuvchi backend tomonidan chiqarilgan qo'shimcha o'zgarishlar haqida to'liq hujjatlashtirilgan xabar yubordi: (1) yangi `GET /api/v1/hemis/students/search/` — ism/familiya/HEMIS ID bo'yicha (kamida 2 belgi) ko'p natijali qidiruv, avval bazadan, keyin (yoki `source=hemis` bilan majburan) to'g'ridan-to'g'ri HEMIS'dan; (2) `GET /api/v1/departments/faculties/`da `students_count === 0` bo'lgan fakultetlar (hozircha "Qo'shma ta'lim dasturi") ro'yxatda yashirilishi kerak; (3) `POST /api/v1/auth/admin/hemis-sync/` javobiga `skipped`/`errors`/`total_count` maydonlari ham qo'shilgan ekan (avval faqat `created`/`updated`/`deactivated` hisoblangan edi); (4) qidiruv (`?search=`) endi tutuq belgisiga (`o'g'li`/`o'g'li`/`ogli`) qaramaydi — bu **faqat backend** o'zgarishi, frontendda hech narsa qilish shart emas.
+
+**1. Header qidiruvi — eski bitta-aniq-ID bo'yicha qidiruv butunlay almashtirildi:**
+Avvalgi [29-band]dagi `GET /api/v1/hemis/student/{hemis_id}/` (hujjatlashtirilmagan, faqat aniq HEMIS ID bo'yicha, bitta natija) endi keraksiz — yangi endpoint **to'liq hujjatlashtirilgan**, ism/familiya bo'yicha qisman qidiruvni ham qo'llab-quvvatlaydi va bir nechta natija qaytaradi, shu sabab eskisi butunlay olib tashlanib, o'rniga shu ulandi.
+
+**O'zgartirilgan fayllar:**
+- [`src/services/hemisLookup.ts`](src/services/hemisLookup.ts) — **butunlay qayta yozildi**. Eski `lookupStudentByHemisId()`/`HemisStudentInfo`/`normalizeHemisStudent()` (moslashuvchan/taxminiy parsing bilan) olib tashlandi. Yangi `searchStudents(q, {source?, limit?})` va to'liq (`Swagger`da hujjatlashtirilgan, taxminsiz) `StudentSearchResult` interfeysi (30+ maydon: shaxsiy, akademik, manzil, ta'lim shakli — [47-band]da so'ralgan, lekin o'sha payt hujjatlashtirilmagan bo'lgani sabab qo'shilmagan maydonlarning barchasi endi mavjud). Rasm (`image`) endi to'liq `https://` URL sifatida qaytadi (avvalgi `/auth/profile/`dagi himoyalangan nisbiy yo'ldan farqli) — shu sabab `fetchAuthenticatedImageUrl()` (blob-orqali-yuklash) emas, oddiy `resolveMediaUrl()` yetarli.
+- [`src/components/AppHeader.vue`](src/components/AppHeader.vue) — qidiruv maydoni endi `@keyup.enter` o'rniga **400ms debounce** bilan (`onSearchInput`) avtomatik qidiradi, kamida 2 belgi kiritilishi talab qilinadi. Natija paneli endi **ro'yxat** (avval bitta karta) — har birida "Tizimda ro'yxatdan o'tmagan" belgisi (`!inSystem`), natijalar ko'p bo'lsa "Natijalar ko'p — aniqroq yozing" ogohlantirishi. Agar qidiruv `source: 'local'` bilan kelsa, ro'yxat ostida **"HEMIS'dan qidirish"** tugmasi paydo bo'ladi — bosilganda `source: 'hemis'` bilan qayta so'raladi (bazada qisman/umuman topilmagan talabalarni ham topish uchun).
+- [`src/style.css`](src/style.css) — `.app-search-result` endi bir nechta natija sig'ishi uchun scroll (`max-height: 420px`) oldi; yangi `.app-search-not-in-system` (belgi) va `.app-search-hemis-btn` (HEMIS'dan qidirish tugmasi) klasslari, yorug'/qorong'i tema uchun ikkalasi ham.
+- [`src/i18n/messages.ts`](src/i18n/messages.ts) — uchala tilga `header.searchMinChars`/`searchFromHemis`/`searchingHemis`/`notInSystem`/`tooManyResults` qo'shildi; `header.search`/`searchNotFound` matnlari endi "HEMIS ID bo'yicha" emas, umumiy qidiruvga mos yangilandi.
+
+**2. Fakultetlar ro'yxati — talabasi yo'qlar yashiriladi:**
+- [`src/stores/grantStudents.ts`](src/stores/grantStudents.ts) — `fetchFaculties()` endi `normalizeFaculty()`dan keyin `studentsCount > 0` bo'yicha filtrlaydi.
+
+**3. HEMIS sinxronizatsiya — `skipped`/`errors`/`total_count` qo'shildi:**
+- [`src/stores/grantStudents.ts`](src/stores/grantStudents.ts) — `HemisSyncTotals`ga `skipped`/`errors` qo'shildi (ikkalasi ham har sahifadan yig'iladi, [57-band]dagi `created`/`updated`/`deactivated` bilan bir xil naqshda); yangi `syncTotalCount` state — backend qaytargan umumiy `total_count`ni saqlaydi. **Diqqat — ikkita alohida maydon bor:** `errors` (son, har sahifada nechta yozuv xato bergani — jarayon davom etadi) va `error` (ixtiyoriy matn, butun sahifa muvaffaqiyatsiz bo'lganda — bu hamon [57-band]dagidek jarayonni to'xtatib, "Davom ettirish" holatiga o'tkazadi). Ikkalasi ham to'g'ri ajratib o'qiladi.
+- [`src/views/grant.vue`](src/views/grant.vue) — progress panelida endi "O'tkazib yuborildi" (`skipped`), xato bo'lsa "Xatoliklar" (`errors`, faqat 0dan katta bo'lsa ko'rinadi) va "Jami" (`total_count`, backenddan kelgan bo'lsa) qo'shildi.
+- [`src/i18n/messages.ts`](src/i18n/messages.ts) — uchala tilga `grant.syncSkipped`/`syncErrors`/`syncTotalCount` qo'shildi.
+
+**Bu safar ataylab tegilmagan:** `/api/v1/departments/`dagi yangi `structure_type_code`/`structure_type_name`/`?structure_type_code=` filtri va `students` (talabalar, 232 chaqiruv) HEMIS sinxronizatsiyasi — foydalanuvchi bularni tilga olgan, lekin frontendda aniq qayerda ko'rsatilishi kerakligi so'ralmagan/ko'rsatilmagan, shu sabab hozircha ulanmadi (kerak bo'lsa alohida so'ralganda qo'shiladi).
+
+**Sinov:** `npx vue-tsc --noEmit` va `npm run build` ikkalasi ham xatosiz o'tdi. `normalizeSearchResult()` foydalanuvchi bergan to'liq namuna javob (Mannonov Sarvar) bilan Node orqali sinaldi — barcha 30 maydon to'g'ri map qilinishi tasdiqlandi; sinxronizatsiya javobidagi yangi `skipped`/`errors`/`total_count` maydonlari ham alohida sinaldi. Brauzerda dev-server orqali login sahifasi konsolida xato yo'qligi tasdiqlandi. Foydalanuvchi backendni qayta deploy qilayotgani sababli, header qidiruvi va sinxronizatsiya progress paneli hali jonli login bilan sinalmadi.
+
+---
+
+### 60. Header qidiruvidagi talaba natijasi endi barcha ma'lumotlarni ko'rsatadi
+Foydalanuvchi skrinshot bilan ko'rsatdi: qidiruv natijasida faqat ism, HEMIS ID, fakultet, kurs va guruh chiqyapti. [59-band]dagi `GET /api/v1/hemis/students/search/` esa 30 dan ortiq maydon qaytaradi, men ulardan faqat 5 tasini ko'rsatgandim.
+
+**Rad etilgan taklif:** foydalanuvchi HEMIS'ning o'z `https://student.uzswlu.uz/rest/v1/data/student-list` API'sini frontend `.env`ga qo'shib, to'g'ridan-to'g'ri chaqirishni taklif qildi. Tekshirildi: bu API tokensiz `401 invalid credentials` qaytaradi. HEMIS tokenini `VITE_*` o'zgaruvchiga qo'yish uni build'dagi JS faylga ochiq holda chiqarib yuboradi, ya'ni istalgan foydalanuvchi 23 000+ talabaning shaxsiy ma'lumotini olishi mumkin bo'lardi. Shu sabab bunday qilinmadi. Token backendda qoladi, frontend faqat backend endpointlarini chaqiradi.
+
+**O'zgartirilgan fayllar:**
+- [`src/components/AppHeader.vue`](src/components/AppHeader.vue) — har bir natijaning qisqa qatori endi bosiladigan tugma. Bosilganda ostida to'liq ma'lumot 4 bo'limda ochiladi: Shaxsiy (tug'ilgan sana, jinsi, telefon, email), Akademik (mutaxassislik+kod, semestr, o'quv yili, GPA, o'rtacha baho, jami kredit, holati), Ta'lim (turi, shakli, tili, to'lov shakli), Manzil (viloyat, tuman, turar joy, yotoqxona). Bo'sh qiymatlar ko'rsatilmaydi. Natija bitta bo'lsa, u avtomatik ochiladi. Tug'ilgan sana `YYYY-MM-DD` → `DD.MM.YYYY` formatida chiqadi.
+- [`src/style.css`](src/style.css) — yangi `.app-search-student-summary`, `.app-search-chevron`, `.app-search-details`, `.app-search-detail-group` klasslari (yorug'/qorong'i tema, 640px'dan tor ekranda bir ustun). **Topilgan xato:** `.app-search-result`dagi `min-width`/`right`/`padding` qoidalari hech qachon ishlamagan ekan, chunki faylda keyinroq keladigan `.header-menu` qoidasi xuddi shu specificity bilan ularni bosib ketgan. Selektor `.header-menu.app-search-result`ga o'zgartirildi, endi panel kengligi `min(560px, 100vw - 32px)`.
+- [`src/i18n/messages.ts`](src/i18n/messages.ts) — uchala tilga `header.studentDetail.*` bloki (bo'lim sarlavhalari va 19 ta maydon nomi) qo'shildi.
+
+**Sinov:** `npx vue-tsc --noEmit` va `npm run build` xatosiz o'tdi. Ochilgan natija paneli real `style.css` bilan dev-server'da DOM in'ektsiyasi orqali qorong'i va yorug' temada tekshirildi. Birinchi urinishda panel 420px'da qolib, qiymatlar siqilib ketgani ko'rindi — sababi yuqoridagi specificity xatosi edi. Tuzatilgandan keyin panel 560px bo'ldi va barcha qiymatlar to'g'ri joylashdi. Haqiqiy login bo'lmagani sababli haqiqiy qidiruv so'rovi bilan jonli sinalmadi.
+
+---
+
+### 61. Murojaatlar sahifasidagi statistik kartochkalar olib tashlandi, o'rniga "Mening ko'rsatkichlarim" (`my-kpi`) to'g'ri ulandi
+Foydalanuvchi murojaatlar sahifasidagi 6 ta kartochkani (Jami/Yangi/Jarayonda/Hal qilindi — brauzerda hisoblangan; Bugun/SLA bajarilishi — hujjatlashtirilmagan `/requests/dashboard/`dan taxminiy o'qilgan, [24-band]) olib tashlashni va o'rniga xodimning shaxsiy ko'rsatkichlarini (`GET /api/v1/statistics/my-kpi/`) to'g'ri ulashni so'radi.
+
+**`my-kpi` ulanishida topilgan xatolar:**
+1. Backenddagi `bajarmagan` ("bajarilmagan") maydoni ekranda **"Rad etilgan"** deb ko'rsatilgan — noto'g'ri tarjima.
+2. Javobdagi oylik taqsimot (`months[]`) va baholar soni (`rating.count`) o'qilgach tashlab yuborilar, faqat 4 ta yig'indi qolardi.
+3. Statistika sahifasida admin boshqa xodimni tanlagach davrni (6/12 oy) o'zgartirsa, `fetchAll()` KPI'ni `employee_id`siz qayta yuklardi — tanlov "Ivanov" ko'rinib turgan holda ekranda adminning o'z ko'rsatkichlari chiqardi.
+
+Javob shakli [26-band]da foydalanuvchi Swagger'dan tasdiqlagan ko'rinishga asoslandi: `{ rating: {average, count}, months: [{label, bajargan, bajarmagan, kechikkan}] }` (Swagger/`/api/schema/` endi login talab qiladi, shu sabab qayta tekshirib bo'lmadi).
+
+**O'zgartirilgan/yaratilgan fayllar:**
+- [`src/components/MyKpiPanel.vue`](src/components/MyKpiPanel.vue) — **yangi**, ikkala sahifada ishlatiladigan umumiy panel: 4 ta ko'rsatkich (Bajarilgan — yashil, Bajarilmagan — to'q sariq, Kechikkan — qizil, O'rtacha baho — baholar soni bilan, baho bo'lmasa "—") va oylar kesimidagi uch rangli ustunlar. `standalone` rejimida (Murojaatlar sahifasi) o'zi ma'lumot yuklaydi va 6/12 oy tanlovini ko'rsatadi; `allow-employee-select` bilan (Statistika sahifasi) admin boshqa xodimni tanlay oladi. Ranglar `--dash-*` tokenlaridan olingani uchun tema bo'yicha avtomatik o'zgaradi.
+- [`src/stores/statistics.ts`](src/stores/statistics.ts) — `MyKpi` endi `{completed, notCompleted, overdue, avgRating, ratingCount, months: MyKpiMonth[]}`; `normalizeMyKpi()` qayta yozildi (eski taxminiy "tekis maydonlar" zaxira yo'li olib tashlandi). `fetchAll()` endi `myKpiEmployeeId`ni ham uzatadi (3-xato).
+- [`src/views/appeals.vue`](src/views/appeals.vue) — 6 ta kartochka, `statCounts` va `fetchDashboard()` chaqiruvi olib tashlandi, o'rniga `<MyKpiPanel standalone />`.
+- [`src/views/statistics.vue`](src/views/statistics.vue) — eski ichki KPI paneli, `selectedKpiEmployeeId`, `onKpiEmployeeChange` va `staffStore` importi olib tashlandi, o'rniga `<MyKpiPanel allow-employee-select />`.
+- [`src/stores/requests.ts`](src/stores/requests.ts) — endi ishlatilmaydigan `fetchDashboard`/`dashboard`/`normalizeDashboard`/`RequestDashboard*` olib tashlandi.
+- [`src/style.css`](src/style.css) — ishlatilmay qolgan `.appeal-stat*` qoidalari (dark-tema variantlari bilan) olib tashlandi; panel uchun yangi `.my-kpi-*`/`.appeals-kpi-panel` klasslari qo'shildi.
+- [`src/i18n/messages.ts`](src/i18n/messages.ts) — `statistics.myKpiRejected` → `myKpiNotCompleted`; `myKpiRatingsUnit`/`myKpiMonthlyTitle`/`myKpiNoData` qo'shildi; `appeals.total/new/inProgress/resolved/today/slaFulfillment` olib tashlandi (uchala tilda).
+
+**Sinov:** `npx vue-tsc --noEmit` va `npm run build` xatosiz o'tdi. `normalizeMyKpi()` namunaviy, bo'sh va `null` javoblar bilan Node orqali sinaldi. Panel real `style.css` bilan dev-server'da yorug' va qorong'i temada vizual tekshirildi. Haqiqiy login bo'lmagani sababli haqiqiy backend javobi bilan jonli sinalmadi — agar maydon nomlari o'zgargan bo'lsa, faqat `normalizeMyKpi()`ni tuzatish kifoya.
+
+---
+
+### 62. Murojaat kartasida "Mas'ul xodim" ko'rsatildi; `my-kpi` 0 ko'rsatishi bo'yicha tahlil
+Foydalanuvchi: "Mening ko'rsatkichlarim" panelida hamma son 0, holbuki ro'yxatda bajarilgan murojaat (REQ-2026-000001) bor — "backendmi muammo, yoki kim bajargani ko'rinmaganmi?".
+
+**Tahlil:** oy nomlari (Apr…Sen) backenddan to'g'ri kelyapti, demak so'rov ishlayapti va javob shakli (`months[]`) mos. Sonlar 0 bo'lishining ikki ehtimoliy sababi bor, uni haqiqiy javobsiz aniqlab bo'lmaydi:
+1. `my-kpi` — **shaxsiy** ko'rsatkich, faqat joriy foydalanuvchi mas'ul (`operator`) bo'lgan murojaatlarni sanaydi. Agar murojaatni boshqa xodim bajargan bo'lsa, admin uchun 0 — bu to'g'ri xatti-harakat. Admin Statistika sahifasidagi KPI panelida o'sha xodimni tanlab ko'rishi mumkin.
+2. Backend oylik maydon nomlarini o'zgartirgan bo'lsa (`bajargan`/`bajarmagan`/`kechikkan` o'rniga boshqa nom), frontend ularni topa olmay 0 ga tushadi.
+Farqlash uchun: DevTools → Network → `my-kpi` → Response. JSON'da ham 0 bo'lsa — backend/`operator` masalasi; JSON'da noldan farqli son boshqa nom ostida bo'lsa — `normalizeMyKpi()`ni tuzatish kerak.
+
+**"Kim bajargani ko'rinmaydi" — tasdiqlandi va tuzatildi:** `RequestDetail`da `operator_name` (mas'ul xodim) maydoni bor, lekin sahifada hech qayerda ko'rsatilmagan edi; bajargan xodim faqat tarixdagi `changed_by_name`dan bilinardi.
+- [`src/views/appeals.vue`](src/views/appeals.vue) — xodim ko'rinishida ochilgan murojaat kartasining ma'lumot gridiga birinchi bo'lib "Mas'ul xodim" (`operator_name`, bo'sh bo'lsa "Biriktirilmagan") qo'shildi.
+- [`src/i18n/messages.ts`](src/i18n/messages.ts) — uchala tilga `appeals.responsibleStaff`/`notAssigned` qo'shildi.
+
+**Sinov:** `npx vue-tsc --noEmit` va `npm run build` xatosiz o'tdi.
+
+---
+
+### 63. Statistika kengaytirildi: `sla_percent: null` uzilish bo'lib chiziladi, haftalik trend, Xodimlar reytingi, Baholar tahlili, boyitilgan `my-kpi`
+Foydalanuvchi backenddagi statistika o'zgarishlari hujjatini yubordi: `monthly-trend` standarti 12 oy va har oyda yangi maydonlar (`kelgan`, `bajarilgan`, `rad_etilgan`, `muddati_otgan`, `bekor_qilingan`, `oz_vaqtida`, `kechikib`, `sla_percent` — **`null` bo'lishi mumkin**, `ortacha_javob_soat`, `baholar_soni`, `ortacha_baho`); yangi `weekly-summary/`, `employees/` (faqat admin), `responses/` (sahifalangan, 20 tadan), `ratings/`; boyitilgan `my-kpi/` (`oz_vaqtida`/`kechikib`/`baholar_soni`/`ortacha_baho` har oyda, `rating.distribution`, `ortacha_javob_soat`, `hozir_ochiq`).
+
+**1. `sla_percent: null` — 0% emas, uzilish:**
+- [`src/components/stats/LineChart.vue`](src/components/stats/LineChart.vue) — `values` endi `(number | null)[]`; seriya `null`lar bo'yicha bo'laklarga ajratilib, har bo'lak alohida chiziq+maydon bo'lib chiziladi (yakka nuqta faqat doira). Yangi ixtiyoriy `max` prop (foiz uchun 100, baho uchun 5). Kasr Y-o'q yorliqlari 1 xonagacha yaxlitlanadi.
+- SLA grafigi endi `/sla-trend/`dan emas, `null`ni rasman qaytaradigan `monthly-trend`ning `sla_percent`idan chiziladi (bitta so'rov kam). Grafik ostida "uzilish = yopilgan murojaat yo'q, 0% emas" izohi.
+
+**2. Oylik/haftalik trend:** [`src/views/statistics.vue`](src/views/statistics.vue) — murojaatlar dinamikasi panelida "Oylik | Haftalik" almashtirgich; haftalik birinchi bosilganda `weekly-summary/?weeks=12` yuklanadi (yorliq `week_start`dan, masalan "14.09"). Har ustunga sichqoncha olib borilsa tafsilot (kelgan, bajarilgan, rad etilgan, o'z vaqtida, kechikib, SLA, o'rtacha javob vaqti). 12 ta ustun sig'ishi uchun zich rejim. Standart davr 6 → **12 oy**.
+
+**3. Statistika sahifasi tablari:** Umumiy | Xodimlar reytingi (faqat `isAdmin`) | Baholar tahlili. Tab ma'lumotlari faqat tab birinchi ochilganda yuklanadi; davr (6/12) o'zgarsa ochilgan tablar ham qayta yuklanadi.
+- [`src/components/stats/StaffPerformancePanel.vue`](src/components/stats/StaffPerformancePanel.vue) — **yangi**. `employees/` jadvali (backend tartibida — eng ko'p javob bergan birinchi): tayinlangan, hozir ochiq, javob bergan, bajargan, rad etgan, o'z vaqtida/kechikib, muddati o'tgan, SLA, o'rtacha javob vaqti, baho. "Batafsil" — shu qatorning ostida `responses/?employee_id=` ro'yxati ochiladi (holat filtri, sahifalash, o'z vaqtida/kechikib belgisi, baho+izoh).
+- [`src/components/stats/RatingsPanel.vue`](src/components/stats/RatingsPanel.vue) — **yangi**. Umumiy o'rtacha + 1–5 taqsimot, oylar kesimida o'rtacha baho (bahosiz oy — uzilish), xizmatlar kesimi jadvali, oxirgi izohli baholar.
+- [`src/components/stats/StarDistribution.vue`](src/components/stats/StarDistribution.vue) — **yangi**, 5★…1★ gorizontal ustunlar; Baholar tahlili va `MyKpiPanel`da ishlatiladi.
+
+**4. `my-kpi`:** [`src/components/MyKpiPanel.vue`](src/components/MyKpiPanel.vue) — yangi kartochkalar: "Hozir ochiq", "O'rtacha javob vaqti (soat)"; "Kechikkan" ostida o'z vaqtida/kechikib; baho bo'lsa "Baholar taqsimoti".
+
+**5. Store:** [`src/stores/statistics.ts`](src/stores/statistics.ts) — yangi turlar `TrendPoint`, `EmployeeStat`, `EmployeeResponse`, `RatingsAnalysis`, `StarDistribution`; `nOrNull()` (bo'sh qiymatni 0 ga emas, `null`ga aylantiradi); `normalizeTrend`/`normalizeEmployeeStat`/`normalizeEmployeeResponse`/`normalizeRatings`/`normalizeDistribution`; `fetchWeekly`/`fetchEmployees`/`fetchEmployeeResponses`/`fetchRatings`. Eski `normalizeSeries`, `SeriesPoint`, `slaTrend` va `/sla-trend/` so'rovi olib tashlandi.
+
+**Diqqat — taxminga asoslangan qismlar (haqiqiy javob bilan tasdiqlanmagan):**
+- `ratings/` — hujjatda faqat tavsif berilgan, maydon nomlari yo'q. Loyihadagi boshqa javoblarning naqshiga (`soni`/`ortacha`/`taqsimot`) qarab bir nechta ehtimoliy nom sinaladi. Biror bo'lim bo'sh chiqsa, `normalizeRatings()`ni haqiqiy javobga moslash kerak.
+- `weekly-summary/` — elementlar `monthly-trend` bilan bir xil, lekin ro'yxat qaysi kalit ostida kelishi aytilmagan (`weeks`/`results`/`items` sinaladi).
+- `my-kpi`dagi `hozir_ochiq`/`ortacha_javob_soat` yuqori darajada deb olindi; `hozir_ochiq` kelmasa kartochka yashirinadi.
+Swagger login talab qilgani sababli bularni tekshirib bo'lmadi.
+
+**Sinov:** `npx vue-tsc --noEmit` va `npm run build` xatosiz o'tdi. Vaqtinchalik Vite test sahifasida (namunaviy ma'lumot bilan, keyin o'chirildi) komponentlar haqiqiy Vue render orqali tekshirildi: SLA `null` qiymatlarida chiziq uzildi (12 oydan 7 ta nuqta, 3 ta alohida bo'lak), `null` SLA/javob vaqti/baho "—" bo'lib chiqdi, "Batafsil" bosilganda javoblar ro'yxati, holat filtri va sahifalash ochildi, konsolda xato yo'q. Haqiqiy login bo'lmagani sababli backend bilan jonli sinalmadi.
+
+---
+
 ## Qoida
 Bundan keyingi har bir o'zgarishda ushbu faylga yangi sana ostida: nima qilingani, sababi va o'zgartirilgan fayllar ro'yxati qo'shiladi.

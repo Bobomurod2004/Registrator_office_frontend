@@ -1,33 +1,106 @@
-import { fetchAuthenticatedImageUrl, http } from '@/services/http'
+import { http, resolveMediaUrl } from '@/services/http'
 
-export interface HemisStudentInfo {
-  fullName: string
+/** GET /api/v1/hemis/students/search/ — Swagger'da to'liq hujjatlashtirilgan,
+ * shu sabab taxminiy (defensive) parsing shart emas, maydonlar to'g'ridan-to'g'ri
+ * map qilinadi. */
+export interface StudentSearchResult {
   hemisId: string
+  fullName: string
+  firstName: string
+  secondName: string
+  thirdName: string
+  phone: string | null
+  email: string
+  photoUrl: string
+  gender: string
+  genderName: string
+  birthDate: string
   faculty: string
+  specialty: string
+  specialtyCode: string
   group: string
   course: string
-  photoUrl: string
+  semester: string
+  educationYear: string
+  educationLang: string
+  educationForm: string
+  educationType: string
+  paymentForm: string
+  gpa: number | null
+  avgGrade: number | null
+  totalCredit: number | null
+  studentStatus: string
+  province: string
+  district: string
+  accommodation: string
+  hasDormitory: boolean
+  inSystem: boolean
+  userId: number | null
 }
 
-/** Rasm fayli backendda himoyalangan (`IsAuthenticated`) bo'lgani uchun
- * tokenli so'rov orqali (blob) yuklanadi — oddiy URL brauzerda ochilmaydi. */
-async function normalizeHemisStudent(data: any, fallbackHemisId: string): Promise<HemisStudentInfo> {
-  const d = data ?? {}
-  const photoUrl = await fetchAuthenticatedImageUrl(d.image || d.photo || d.avatar || '')
+export interface StudentSearchResponse {
+  source: 'local' | 'hemis'
+  count: number
+  truncated: boolean
+  results: StudentSearchResult[]
+}
+
+function normalizeSearchResult(raw: any): StudentSearchResult {
   return {
-    fullName: d.full_name || d.student_name || d.fullName || d.name || '',
-    hemisId: d.hemis_id || d.student_id_number || d.hemisId || fallbackHemisId,
-    faculty: d.faculty || d.faculty_name || d.department || d.department_name || '',
-    group: d.group || d.group_name || d.groupName || '',
-    course: d.course != null ? String(d.course) : d.level != null ? String(d.level) : '',
-    photoUrl: photoUrl ?? '',
+    hemisId: raw.hemis_id ?? '',
+    fullName: raw.full_name ?? '',
+    firstName: raw.first_name ?? '',
+    secondName: raw.second_name ?? '',
+    thirdName: raw.third_name ?? '',
+    phone: raw.phone ?? null,
+    email: raw.email ?? '',
+    photoUrl: resolveMediaUrl(raw.image) ?? '',
+    gender: raw.gender ?? '',
+    genderName: raw.gender_name ?? '',
+    birthDate: raw.birth_date ?? '',
+    faculty: raw.faculty ?? '',
+    specialty: raw.specialty ?? '',
+    specialtyCode: raw.specialty_code ?? '',
+    group: raw.group ?? '',
+    course: raw.course ?? '',
+    semester: raw.semester ?? '',
+    educationYear: raw.education_year ?? '',
+    educationLang: raw.education_lang ?? '',
+    educationForm: raw.education_form ?? '',
+    educationType: raw.education_type ?? '',
+    paymentForm: raw.payment_form ?? '',
+    gpa: raw.gpa ?? null,
+    avgGrade: raw.avg_grade ?? null,
+    totalCredit: raw.total_credit ?? null,
+    studentStatus: raw.student_status ?? '',
+    province: raw.province ?? '',
+    district: raw.district ?? '',
+    accommodation: raw.accommodation ?? '',
+    hasDormitory: !!raw.has_dormitory,
+    inSystem: !!raw.in_system,
+    userId: raw.user_id ?? null,
   }
 }
 
-/** GET /api/v1/hemis/student/{hemis_id}/ — xodim istalgan talabani HEMIS ID
- * bo'yicha qidirishi uchun. Javob shakli hujjatlashtirilmagan, shu sabab
- * `/hemis/lookup/` bilan bir xil moslashuvchan o'qish qo'llaniladi. */
-export async function lookupStudentByHemisId(hemisId: string): Promise<HemisStudentInfo> {
-  const { data } = await http.get(`/api/v1/hemis/student/${encodeURIComponent(hemisId)}/`)
-  return normalizeHemisStudent(data, hemisId)
+/**
+ * Talabani ism/familiya/HEMIS ID bo'yicha qidiradi. Avval bizning bazadan
+ * (`source: 'local'`) qidiradi, bazada topilmasa backend'ning o'zi HEMIS'dan
+ * qidiradi (`source: 'hemis'`) — bu natija bazaga yozilmaydi. `source: 'hemis'`
+ * uzatilsa bazani chetlab, to'g'ridan-to'g'ri HEMIS'dan qidiradi (masalan
+ * bazada qisman topilgandan keyin "HEMIS'dan qidirish" tugmasi bosilganda).
+ * Faqat xodimlar uchun — talaba chaqirsa backend 403 qaytaradi.
+ */
+export async function searchStudents(
+  q: string,
+  opts: { source?: 'hemis'; limit?: number } = {},
+): Promise<StudentSearchResponse> {
+  const { data } = await http.get('/api/v1/hemis/students/search/', {
+    params: { q, source: opts.source, limit: opts.limit },
+  })
+  return {
+    source: data?.source ?? 'local',
+    count: data?.count ?? 0,
+    truncated: !!data?.truncated,
+    results: Array.isArray(data?.results) ? data.results.map(normalizeSearchResult) : [],
+  }
 }

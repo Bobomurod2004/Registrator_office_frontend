@@ -8,7 +8,7 @@ import type { Locale } from '@/i18n/messages'
 import FlagIcon from '@/components/FlagIcon.vue'
 import AppLogo from '@/components/AppLogo.vue'
 import { toggleMobileMenu } from '@/composables/mobileNav'
-import { lookupStudentByHemisId, type HemisStudentInfo } from '@/services/hemisLookup'
+import { searchStudents, type StudentSearchResult } from '@/services/hemisLookup'
 import { formatDateTime } from '@/utils/formatDate'
 
 type ThemeMode = 'light' | 'dark' | 'system'
@@ -25,29 +25,113 @@ const notificationsStore = useNotificationsStore()
 const m = computed(() => localeStore.m)
 const showSearch = computed(() => route.name !== 'login' && authStore.isStaff)
 
-/* Xodim istalgan talabani HEMIS ID bo'yicha qidirishi mumkin (GET /api/v1/hemis/student/{hemis_id}/). */
+/* Xodim talabani ism/familiya/HEMIS ID bo'yicha qidirishi mumkin
+ * (GET /api/v1/hemis/students/search/) — avval bazadan, topilmasa (yoki
+ * "HEMIS'dan qidirish" bosilsa) to'g'ridan-to'g'ri HEMIS'dan. */
 const searchQuery = ref('')
 const searchLoading = ref(false)
 const searchError = ref('')
-const searchResult = ref<HemisStudentInfo | null>(null)
+const searchResults = ref<StudentSearchResult[]>([])
+const searchSource = ref<'local' | 'hemis' | null>(null)
+const searchTruncated = ref(false)
 const isSearchOpen = ref(false)
+const expandedHemisId = ref<string | null>(null)
+let searchDebounce: number | undefined
 
-async function runStudentSearch() {
-  const hemisId = searchQuery.value.trim()
-  if (!hemisId) return
+function toggleStudent(hemisId: string) {
+  expandedHemisId.value = expandedHemisId.value === hemisId ? null : hemisId
+}
+
+function formatBirthDate(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value)
+  return match ? `${match[3]}.${match[2]}.${match[1]}` : value
+}
+
+/** Qidiruv javobidagi barcha maydonlar bo'limlarga ajratiladi; bo'sh qiymatlar ko'rsatilmaydi.
+ * Fakultet/kurs/guruh qisqa qatorning o'zida bo'lgani uchun bu yerda takrorlanmaydi. */
+function studentDetailGroups(s: StudentSearchResult) {
+  const d = m.value.header.studentDetail
+  const groups: Array<{ title: string; items: Array<[string, string | number | null]> }> = [
+    {
+      title: d.personal,
+      items: [
+        [d.birthDate, s.birthDate ? formatBirthDate(s.birthDate) : ''],
+        [d.gender, s.genderName],
+        [d.phone, s.phone],
+        [d.email, s.email],
+      ],
+    },
+    {
+      title: d.academic,
+      items: [
+        [d.specialty, s.specialtyCode ? `${s.specialty} (${s.specialtyCode})` : s.specialty],
+        [d.semester, s.semester],
+        [d.educationYear, s.educationYear],
+        [d.gpa, s.gpa],
+        [d.avgGrade, s.avgGrade],
+        [d.totalCredit, s.totalCredit],
+        [d.status, s.studentStatus],
+      ],
+    },
+    {
+      title: d.education,
+      items: [
+        [d.educationType, s.educationType],
+        [d.educationForm, s.educationForm],
+        [d.educationLang, s.educationLang],
+        [d.paymentForm, s.paymentForm],
+      ],
+    },
+    {
+      title: d.address,
+      items: [
+        [d.province, s.province],
+        [d.district, s.district],
+        [d.accommodation, s.accommodation],
+        [d.dormitory, s.hasDormitory ? m.value.profile.yes : m.value.profile.no],
+      ],
+    },
+  ]
+  return groups
+    .map((g) => ({
+      title: g.title,
+      items: g.items
+        .filter(([, value]) => value !== null && value !== '')
+        .map(([label, value]) => ({ label, value: String(value) })),
+    }))
+    .filter((g) => g.items.length)
+}
+
+async function runStudentSearch(source?: 'hemis') {
+  const q = searchQuery.value.trim()
+  if (q.length < 2) {
+    searchResults.value = []
+    searchError.value = q.length > 0 ? m.value.header.searchMinChars : ''
+    return
+  }
 
   searchLoading.value = true
   searchError.value = ''
-  searchResult.value = null
   isSearchOpen.value = true
 
   try {
-    searchResult.value = await lookupStudentByHemisId(hemisId)
+    const res = await searchStudents(q, { source })
+    searchResults.value = res.results
+    searchSource.value = res.source
+    searchTruncated.value = res.truncated
+    expandedHemisId.value = res.results.length === 1 ? res.results[0]!.hemisId : null
+    if (!res.results.length) searchError.value = m.value.header.searchNotFound
   } catch {
+    searchResults.value = []
     searchError.value = m.value.header.searchNotFound
   } finally {
     searchLoading.value = false
   }
+}
+
+function onSearchInput() {
+  window.clearTimeout(searchDebounce)
+  searchDebounce = window.setTimeout(() => runStudentSearch(), 400)
 }
 
 const roleLabel = computed(() => {
@@ -183,6 +267,7 @@ onBeforeUnmount(() => {
   mediaQuery.removeEventListener('change', handleSystemThemeChange)
   window.removeEventListener('click', closeDropdowns)
   if (notifTimer) window.clearInterval(notifTimer)
+  window.clearTimeout(searchDebounce)
 })
 </script>
 
@@ -219,27 +304,68 @@ onBeforeUnmount(() => {
             class="form-control app-search"
             type="search"
             :placeholder="m.header.search"
-            @keyup.enter="runStudentSearch"
-            @focus="isSearchOpen = !!(searchResult || searchError || searchLoading)"
+            @input="onSearchInput"
+            @focus="isSearchOpen = !!(searchResults.length || searchError || searchLoading)"
           />
           <div v-if="isSearchOpen" class="header-menu app-search-result">
             <p v-if="searchLoading" class="app-search-status">{{ m.header.searching }}</p>
             <p v-else-if="searchError" class="app-search-status app-search-error">{{ searchError }}</p>
-            <div v-else-if="searchResult" class="app-search-student">
-              <img v-if="searchResult.photoUrl" class="app-search-avatar" :src="searchResult.photoUrl" alt="" />
-              <span v-else class="app-search-avatar app-search-avatar-fallback">
-                {{ (searchResult.fullName || '?').charAt(0).toUpperCase() }}
-              </span>
-              <div class="app-search-student-info">
-                <strong>{{ searchResult.fullName || searchResult.hemisId }}</strong>
-                <span>{{ m.settings.hemisId }}: {{ searchResult.hemisId }}</span>
-                <span v-if="searchResult.faculty">{{ m.profile.studentFields.faculty }}: {{ searchResult.faculty }}</span>
-                <span v-if="searchResult.course || searchResult.group">
-                  {{ m.profile.studentFields.course }}: {{ searchResult.course }}
-                  <template v-if="searchResult.group"> · {{ m.profile.studentFields.group }}: {{ searchResult.group }}</template>
-                </span>
+            <template v-else-if="searchResults.length">
+              <p v-if="searchTruncated" class="app-search-status">{{ m.header.tooManyResults }}</p>
+              <div v-for="student in searchResults" :key="student.hemisId" class="app-search-student">
+                <button
+                  type="button"
+                  class="app-search-student-summary"
+                  :aria-expanded="expandedHemisId === student.hemisId"
+                  @click="toggleStudent(student.hemisId)"
+                >
+                  <img v-if="student.photoUrl" class="app-search-avatar" :src="student.photoUrl" alt="" />
+                  <span v-else class="app-search-avatar app-search-avatar-fallback">
+                    {{ (student.fullName || '?').charAt(0).toUpperCase() }}
+                  </span>
+                  <span class="app-search-student-info">
+                    <strong>
+                      {{ student.fullName || student.hemisId }}
+                      <span v-if="!student.inSystem" class="app-search-not-in-system">{{ m.header.notInSystem }}</span>
+                    </strong>
+                    <span>{{ m.settings.hemisId }}: {{ student.hemisId }}</span>
+                    <span v-if="student.faculty">{{ m.profile.studentFields.faculty }}: {{ student.faculty }}</span>
+                    <span v-if="student.course || student.group">
+                      {{ m.profile.studentFields.course }}: {{ student.course }}
+                      <template v-if="student.group"> · {{ m.profile.studentFields.group }}: {{ student.group }}</template>
+                    </span>
+                  </span>
+                  <svg
+                    class="app-search-chevron"
+                    :class="{ open: expandedHemisId === student.hemisId }"
+                    viewBox="0 0 24 24"
+                  >
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
+
+                <div v-if="expandedHemisId === student.hemisId" class="app-search-details">
+                  <section v-for="group in studentDetailGroups(student)" :key="group.title" class="app-search-detail-group">
+                    <h4>{{ group.title }}</h4>
+                    <dl>
+                      <template v-for="item in group.items" :key="item.label">
+                        <dt>{{ item.label }}</dt>
+                        <dd>{{ item.value }}</dd>
+                      </template>
+                    </dl>
+                  </section>
+                </div>
               </div>
-            </div>
+              <button
+                v-if="searchSource === 'local'"
+                type="button"
+                class="app-search-hemis-btn"
+                :disabled="searchLoading"
+                @click="runStudentSearch('hemis')"
+              >
+                {{ searchLoading ? m.header.searchingHemis : m.header.searchFromHemis }}
+              </button>
+            </template>
           </div>
         </div>
 

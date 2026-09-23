@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import DashboardLayout from '@/components/DashboardLayout.vue'
 import RequestStatusTracker from '@/components/RequestStatusTracker.vue'
+import MyKpiPanel from '@/components/MyKpiPanel.vue'
 import { extractApiError } from '@/services/http'
 import { useAuthStore } from '@/stores/auth'
 import { useRequestsStore, type RequestDetail, type RequestListItem, type RequestStatus } from '@/stores/requests'
@@ -31,13 +32,6 @@ function toggleAssignedToMe() {
   void requestsStore.fetchRequests({ assignedToMe: assignedToMe.value })
 }
 
-const statCounts = computed(() => ({
-  total: requestsStore.requests.length,
-  new: requestsStore.requests.filter((r) => r.status === 'new').length,
-  inProgress: requestsStore.requests.filter((r) => r.status === 'in_progress').length,
-  completed: requestsStore.requests.filter((r) => r.status === 'completed').length,
-}))
-
 /** Bildirishnomalar panelidan bosilganda (`AppHeader.vue`) `?request=<id>` query
  *  parametri bilan shu sahifaga o'tkaziladi — murojaatlar ro'yxati yuklangach,
  *  aynan o'sha murojaat kartasi avtomatik ochiladi va ko'rinadigan qismga
@@ -63,10 +57,7 @@ async function openFromNotification() {
 
 onMounted(async () => {
   await requestsStore.fetchRequests()
-  if (authStore.isStaff) {
-    staffStore.fetchDepartments()
-    requestsStore.fetchDashboard()
-  }
+  if (authStore.isStaff) staffStore.fetchDepartments()
   await openFromNotification()
 })
 
@@ -345,32 +336,7 @@ function documentLanguageLabel(lang: string) {
       <h1>{{ m.appeals.staffTitle }}</h1>
       <p class="services-subtitle">{{ m.appeals.staffSubtitle }}</p>
 
-      <div class="appeal-stat-row">
-        <div class="appeal-stat">
-          <strong>{{ statCounts.total }}</strong>
-          <span>{{ m.appeals.total }}</span>
-        </div>
-        <div class="appeal-stat is-new">
-          <strong>{{ statCounts.new }}</strong>
-          <span>{{ m.appeals.new }}</span>
-        </div>
-        <div class="appeal-stat is-progress">
-          <strong>{{ statCounts.inProgress }}</strong>
-          <span>{{ m.appeals.inProgress }}</span>
-        </div>
-        <div class="appeal-stat is-done">
-          <strong>{{ statCounts.completed }}</strong>
-          <span>{{ m.appeals.resolved }}</span>
-        </div>
-        <div v-if="requestsStore.dashboard" class="appeal-stat">
-          <strong>{{ requestsStore.dashboard.today }}</strong>
-          <span>{{ m.appeals.today }}</span>
-        </div>
-        <div v-if="requestsStore.dashboard" class="appeal-stat is-done">
-          <strong>{{ requestsStore.dashboard.slaPercent }}%</strong>
-          <span>{{ m.appeals.slaFulfillment }}</span>
-        </div>
-      </div>
+      <MyKpiPanel standalone class="appeals-kpi-panel" />
 
       <div class="services-tabs">
         <button class="btn service-tab-btn" :class="{ active: filter === 'all' }" @click="filter = 'all'">
@@ -454,6 +420,10 @@ function documentLanguageLabel(lang: string) {
 
             <template v-else-if="expandedDetail">
               <div class="req-detail-grid">
+                <div class="req-detail-item">
+                  <span class="field-label">{{ m.appeals.responsibleStaff }}</span>
+                  <strong>{{ expandedDetail.operator_name || m.appeals.notAssigned }}</strong>
+                </div>
                 <div class="req-detail-item">
                   <span class="field-label">{{ m.appeals.studentHemisId }}</span>
                   <strong>{{ expandedDetail.student_hemis_id }}</strong>

@@ -85,43 +85,10 @@ export interface CreateRequestPayload {
   notes?: string
 }
 
-export interface RequestDashboardCategory {
-  key: string
-  label: string
-  count: number
-}
-
-export interface RequestDashboard {
-  total: number
-  today: number
-  slaPercent: number
-  byCategory: RequestDashboardCategory[]
-}
-
-/** GET /api/v1/requests/dashboard/ javob shakli hujjatlashtirilmagan — eng
- * ehtimoliy maydon nomlari sinaladi, mos kelmasa xavfsiz standart qiymatga tushadi. */
-function normalizeDashboard(raw: any): RequestDashboard {
-  const d = raw ?? {}
-  const categoryList = d.by_category ?? d.categories ?? d.category_breakdown ?? []
-  return {
-    total: Number(d.total ?? d.total_count ?? 0) || 0,
-    today: Number(d.today ?? d.today_count ?? 0) || 0,
-    slaPercent: Number(d.sla_percent ?? d.sla_percentage ?? d.sla ?? 0) || 0,
-    byCategory: Array.isArray(categoryList)
-      ? categoryList.map((c: any) => ({
-          key: c.key ?? c.category ?? '',
-          label: c.label ?? c.category_display ?? c.name ?? '',
-          count: Number(c.count ?? c.value ?? 0) || 0,
-        }))
-      : [],
-  }
-}
-
 export const useRequestsStore = defineStore('requests', () => {
   const requests = ref<RequestListItem[]>([])
   const loading = ref(false)
   const error = ref('')
-  const dashboard = ref<RequestDashboard | null>(null)
 
   /** Oxirgi marta ishlatilgan `assignedToMe` holati — status o'zgartirish/
    *  yo'naltirish kabi amallardan keyingi ichki qayta yuklashlar ham shu
@@ -207,21 +174,10 @@ export const useRequestsStore = defineStore('requests', () => {
     await fetchRequests()
   }
 
-  /** Real vaqt statistika (jami, bugun, kategoriya bo'yicha, SLA bajarish foizi). */
-  async function fetchDashboard() {
-    try {
-      const { data } = await http.get('/api/v1/requests/dashboard/')
-      dashboard.value = normalizeDashboard(data)
-    } catch {
-      // Jim tur — stat panel client tarafda hisoblangan qiymatlarga tushadi.
-    }
-  }
-
   return {
     requests,
     loading,
     error,
-    dashboard,
     fetchRequests,
     fetchRequestDetail,
     createRequest,
@@ -231,6 +187,5 @@ export const useRequestsStore = defineStore('requests', () => {
     updateStatus,
     redirectRequest,
     cancelRequest,
-    fetchDashboard,
   }
 })

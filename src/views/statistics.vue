@@ -7,17 +7,18 @@ import CircularProgress from '@/components/stats/CircularProgress.vue'
 import LineChart from '@/components/stats/LineChart.vue'
 import PieChart from '@/components/stats/PieChart.vue'
 import Heatmap from '@/components/stats/Heatmap.vue'
+import MyKpiPanel from '@/components/MyKpiPanel.vue'
+import StaffPerformancePanel from '@/components/stats/StaffPerformancePanel.vue'
+import RatingsPanel from '@/components/stats/RatingsPanel.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useLocaleStore } from '@/stores/locale'
-import { useStatisticsStore } from '@/stores/statistics'
-import { useStaffStore } from '@/stores/staff'
+import { useStatisticsStore, type TrendPoint } from '@/stores/statistics'
 import { extractApiError } from '@/services/http'
 
 const authStore = useAuthStore()
 const localeStore = useLocaleStore()
 const m = computed(() => localeStore.m)
 const statsStore = useStatisticsStore()
-const staffStore = useStaffStore()
 
 const lastUpdatedAt = ref(new Date())
 const refreshing = ref(false)
@@ -36,22 +37,54 @@ async function refreshNow() {
   }
 }
 
-function onMonthsChange() {
-  loadAll()
+type StatsTab = 'overview' | 'staff' | 'ratings'
+const activeTab = ref<StatsTab>('overview')
+const staffLoaded = ref(false)
+const ratingsLoaded = ref(false)
+
+/** Xodimlar reytingi va baholar faqat o'z tabi ochilganda (bir marta) yuklanadi. */
+function openTab(tab: StatsTab) {
+  activeTab.value = tab
+  if (tab === 'staff' && !staffLoaded.value) {
+    staffLoaded.value = true
+    void statsStore.fetchEmployees()
+  }
+  if (tab === 'ratings' && !ratingsLoaded.value) {
+    ratingsLoaded.value = true
+    void statsStore.fetchRatings()
+  }
 }
 
 onMounted(() => {
   loadAll()
-  if (authStore.isAdmin) staffStore.fetchMembers()
 })
 
-/** Bo'lim admin/SuperAdmin `employee_id` orqali boshqa xodimning "Mening
- * ko'rsatkichlarim" panelini ham ko'rishi mumkin (backend'da yangi qo'shilgan
- * imkoniyat) — bo'sh tanlansa, o'zining ko'rsatkichlariga qaytadi. */
-const selectedKpiEmployeeId = ref<number | ''>('')
+type TrendMode = 'monthly' | 'weekly'
+const trendMode = ref<TrendMode>('monthly')
+const weeklyLoaded = ref(false)
 
-function onKpiEmployeeChange() {
-  statsStore.fetchMyKpi(selectedKpiEmployeeId.value === '' ? null : Number(selectedKpiEmployeeId.value))
+function setTrendMode(mode: TrendMode) {
+  trendMode.value = mode
+  if (mode === 'weekly' && !weeklyLoaded.value) {
+    weeklyLoaded.value = true
+    void statsStore.fetchWeekly(12)
+  }
+}
+
+const trendPoints = computed(() => (trendMode.value === 'weekly' ? statsStore.weeklyTrend : statsStore.monthlyTrend))
+
+function trendTooltip(p: TrendPoint) {
+  const s = m.value.statistics
+  const parts = [
+    `${s.trendReceived}: ${p.count}`,
+    `${s.trendCompleted}: ${p.completed}`,
+    `${s.trendRejected}: ${p.rejected}`,
+    `${s.myKpiOnTime}: ${p.onTime}`,
+    `${s.myKpiLate}: ${p.late}`,
+    `SLA: ${p.slaPercent === null ? '—' : `${p.slaPercent}%`}`,
+  ]
+  if (p.avgResponseHours !== null) parts.push(`${s.myKpiAvgResponse}: ${p.avgResponseHours} ${s.myKpiHoursUnit}`)
+  return parts.join('\n')
 }
 
 const ICONS = {
@@ -81,7 +114,7 @@ const kpis = computed(() => {
 })
 
 const yAxisTop = computed(() => {
-  const max = Math.max(1, ...statsStore.monthlyTrend.map((p) => p.value))
+  const max = Math.max(1, ...trendPoints.value.map((p) => p.count))
   return Math.ceil(max / 25) * 25 || 25
 })
 const yAxisSteps = computed(() => [yAxisTop.value, yAxisTop.value * 0.75, yAxisTop.value * 0.5, yAxisTop.value * 0.25, 0])
@@ -107,10 +140,11 @@ const genderSeries = computed(() => [
 ])
 const genderLabels = computed(() => statsStore.genderMonthly.map((p) => p.label))
 
+/** `slaPercent: null` (davrda yopilgan murojaat yo'q) — grafikda 0% emas, uzilish bo'lib chiziladi. */
 const slaSeries = computed(() => [
-  { name: m.value.statistics.slaTrendTitle, color: 'var(--dash-green)', values: statsStore.slaTrend.map((p) => p.value) },
+  { name: m.value.statistics.slaTrendTitle, color: 'var(--dash-green)', values: statsStore.monthlyTrend.map((p) => p.slaPercent) },
 ])
-const slaLabels = computed(() => statsStore.slaTrend.map((p) => p.label))
+const slaLabels = computed(() => statsStore.monthlyTrend.map((p) => p.label))
 
 const deptYAxisSteps = [100, 75, 50, 25, 0]
 
@@ -157,14 +191,6 @@ async function exportCsv() {
       </div>
 
       <div class="export-toolbar-v2">
-        <span class="select-wrap period-select-wrap">
-          <select v-model.number="statsStore.months" class="field-input" @change="onMonthsChange">
-            <option :value="6">{{ m.statistics.period6 }}</option>
-            <option :value="12">{{ m.statistics.period12 }}</option>
-          </select>
-          <svg class="select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9" /></svg>
-        </span>
-
         <button type="button" class="appeal-btn export-btn-v2" :disabled="exporting !== null" @click="exportPdf">
           <svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6V2Zm8 1.5V8h4.5L14 3.5ZM8 13h2.2c1.3 0 2.1.8 2.1 2s-.8 2-2.1 2H9v2H8v-6Zm1 1v2h1.2c.6 0 1-.3 1-1s-.4-1-1-1H9Zm4.5-1H15c1.1 0 2 .9 2 2v2c0 1.1-.9 2-2 2h-1.5v-6Zm1 1v4H15c.5 0 1-.4 1-1v-2c0-.6-.5-1-1-1h-.5Z" /></svg>
           {{ exporting === 'pdf' ? m.statistics.exporting : m.statistics.exportPdf }}
@@ -182,6 +208,27 @@ async function exportCsv() {
       <p v-if="exportError" class="form-error">{{ exportError }}</p>
       <p v-if="statsStore.error" class="form-error">{{ statsStore.error }}</p>
 
+      <div v-if="authStore.isStaff" class="services-tabs stats-tabs">
+        <button class="btn service-tab-btn" :class="{ active: activeTab === 'overview' }" @click="openTab('overview')">
+          {{ m.statistics.tabOverview }}
+        </button>
+        <button
+          v-if="authStore.isAdmin"
+          class="btn service-tab-btn"
+          :class="{ active: activeTab === 'staff' }"
+          @click="openTab('staff')"
+        >
+          {{ m.statistics.tabStaff }}
+        </button>
+        <button class="btn service-tab-btn" :class="{ active: activeTab === 'ratings' }" @click="openTab('ratings')">
+          {{ m.statistics.tabRatings }}
+        </button>
+      </div>
+
+      <StaffPerformancePanel v-if="activeTab === 'staff' && authStore.isAdmin" />
+      <RatingsPanel v-else-if="activeTab === 'ratings'" />
+
+      <template v-else>
       <div class="kpi-row-v2">
         <KpiCard
           v-for="kpi in kpis"
@@ -204,20 +251,29 @@ async function exportCsv() {
               <svg class="panel-v2-icon" viewBox="0 0 24 24">
                 <path d="M3 3h2v18H3V3Zm4 10h3v8H7v-8Zm5-6h3v14h-3V7Zm5 3h3v11h-3V10Z" />
               </svg>
-              {{ m.statistics.monthlyTitle }}
+              {{ trendMode === 'weekly' ? m.statistics.weeklyTitle : m.statistics.monthlyTitle }}
             </h3>
+            <div class="trend-toggle">
+              <button type="button" :class="{ active: trendMode === 'monthly' }" @click="setTrendMode('monthly')">
+                {{ m.statistics.trendMonthly }}
+              </button>
+              <button type="button" :class="{ active: trendMode === 'weekly' }" @click="setTrendMode('weekly')">
+                {{ m.statistics.trendWeekly }}
+              </button>
+            </div>
           </div>
 
+          <p v-if="trendMode === 'weekly' && statsStore.weeklyError" class="form-error">{{ statsStore.weeklyError }}</p>
           <div class="bar-chart-wrap-v2">
             <div class="bar-y-axis-v2">
               <span v-for="step in yAxisSteps" :key="step">{{ step }}</span>
             </div>
-            <div class="bar-chart-v2">
-              <div v-for="mo in statsStore.monthlyTrend" :key="mo.label" class="bar-col-v2">
-                <div class="bar-v2" :style="{ height: `${(mo.value / yAxisTop) * 100}%` }">
-                  <span class="bar-value-v2">{{ mo.value }}</span>
+            <div class="bar-chart-v2" :class="{ 'is-dense': trendPoints.length > 8 }">
+              <div v-for="(p, i) in trendPoints" :key="`${p.label}-${i}`" class="bar-col-v2" :title="trendTooltip(p)">
+                <div class="bar-v2" :style="{ height: `${(p.count / yAxisTop) * 100}%` }">
+                  <span class="bar-value-v2">{{ p.count }}</span>
                 </div>
-                <span class="bar-label-v2">{{ mo.label }}</span>
+                <span class="bar-label-v2">{{ p.label }}</span>
               </div>
             </div>
           </div>
@@ -252,7 +308,8 @@ async function exportCsv() {
             </svg>
             {{ m.statistics.slaTrendTitle }}
           </h3>
-          <LineChart :labels="slaLabels" :series="slaSeries" suffix="%" />
+          <LineChart :labels="slaLabels" :series="slaSeries" suffix="%" :max="100" />
+          <p class="line-chart-note">{{ m.statistics.slaNullNote }}</p>
         </article>
       </div>
 
@@ -290,46 +347,10 @@ async function exportCsv() {
         </article>
       </div>
 
-      <article v-if="authStore.isStaff" class="panel-v2">
-        <div class="panel-v2-head">
-          <h3>
-            <svg class="panel-v2-icon" viewBox="0 0 24 24">
-              <path d="M12 2 1 8l11 6 9-4.9V17h2V8L12 2Zm0 8.4L4.2 6.4 12 4l7.8 2.4L12 10.4ZM5 12.2v3.6c0 2 3.1 3.6 7 3.6s7-1.6 7-3.6v-3.6l-7 3.8-7-3.8Z" />
-            </svg>
-            {{ m.statistics.myKpiTitle }}
-          </h3>
-          <span v-if="authStore.isAdmin" class="select-wrap my-kpi-employee-select">
-            <select v-model="selectedKpiEmployeeId" class="field-input" @change="onKpiEmployeeChange">
-              <option value="">{{ m.statistics.myKpiMineOption }}</option>
-              <option v-for="member in staffStore.members" :key="member.id" :value="member.id">
-                {{ member.full_name }}
-              </option>
-            </select>
-            <svg class="select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9" /></svg>
-          </span>
-        </div>
-        <p v-if="statsStore.myKpi === null" class="form-error">
-          {{ statsStore.myKpiError || m.statistics.myKpiLoadError }}
-        </p>
-        <div v-else class="my-kpi-row">
-          <div class="my-kpi-item">
-            <strong>{{ statsStore.myKpi.completed }}</strong>
-            <span>{{ m.statistics.myKpiCompleted }}</span>
-          </div>
-          <div class="my-kpi-item">
-            <strong>{{ statsStore.myKpi.rejected }}</strong>
-            <span>{{ m.statistics.myKpiRejected }}</span>
-          </div>
-          <div class="my-kpi-item">
-            <strong>{{ statsStore.myKpi.overdue }}</strong>
-            <span>{{ m.statistics.myKpiOverdue }}</span>
-          </div>
-          <div class="my-kpi-item">
-            <strong>{{ statsStore.myKpi.avgRating.toFixed(1) }} ★</strong>
-            <span>{{ m.statistics.myKpiAvgRating }}</span>
-          </div>
-        </div>
-      </article>
+      <!-- SuperAdmin murojaatlarga javob beruvchi xodim bo'lmasligi mumkin;
+           uning bo'sh shaxsiy KPI'si o'rniga "Xodimlar" tabida barcha xodim
+           ko'rsatkichlari chiqadi. -->
+      <MyKpiPanel v-if="authStore.isStaff && !authStore.isSuperAdmin" allow-employee-select />
 
       <article class="panel-v2 summary-panel-v2">
         <div class="summary-particles" />
@@ -356,6 +377,7 @@ async function exportCsv() {
           </div>
         </div>
       </article>
+      </template>
     </div>
   </DashboardLayout>
 </template>

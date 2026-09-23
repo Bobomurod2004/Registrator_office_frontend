@@ -1,16 +1,20 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
+/** `null` — "ma'lumot yo'q" (masalan o'sha oyda yopilgan murojaat bo'lmagani uchun SLA
+ * hisoblanmagan). Bunday nuqta 0 sifatida chizilmaydi: chiziq shu joyda uziladi. */
 export interface LineSeries {
   name: string
   color: string
-  values: number[]
+  values: Array<number | null>
 }
 
 const props = defineProps<{
   labels: string[]
   series: LineSeries[]
   suffix?: string
+  /** Y o'qining yuqori chegarasi (masalan foizlar uchun 100); berilmasa ma'lumotdan hisoblanadi. */
+  max?: number
 }>()
 
 const uid = `line-${Math.random().toString(36).slice(2, 9)}`
@@ -20,11 +24,12 @@ const height = 200
 const padTop = 14
 const padBottom = 26
 const padLeft = 6
+const baseline = height - padBottom
 
 const maxValue = computed(() => {
-  const all = props.series.flatMap((s) => s.values)
-  const top = Math.ceil(Math.max(1, ...all) / 10) * 10
-  return top
+  if (props.max) return props.max
+  const all = props.series.flatMap((s) => s.values).filter((v): v is number => v !== null)
+  return Math.ceil(Math.max(1, ...all) / 10) * 10
 })
 
 const ySteps = computed(() => {
@@ -32,20 +37,38 @@ const ySteps = computed(() => {
   return [top, top * 0.75, top * 0.5, top * 0.25, 0]
 })
 
-function pointsFor(values: number[]) {
+interface Point {
+  x: number
+  y: number
+}
+
+/** Ketma-ket kelgan `null` bo'lmagan nuqtalar guruhlari — har biri alohida chiziq bo'lagi. */
+function segmentsFor(values: Array<number | null>): Point[][] {
   const plotW = width - padLeft
   const plotH = height - padTop - padBottom
   const step = values.length > 1 ? plotW / (values.length - 1) : 0
-  return values.map((v, i) => {
-    const x = padLeft + i * step
-    const y = padTop + plotH - (v / maxValue.value) * plotH
-    return { x, y }
+  const segments: Point[][] = []
+  let current: Point[] = []
+  values.forEach((v, i) => {
+    if (v === null) {
+      if (current.length) segments.push(current)
+      current = []
+      return
+    }
+    current.push({ x: padLeft + i * step, y: padTop + plotH - (v / maxValue.value) * plotH })
   })
+  if (current.length) segments.push(current)
+  return segments
 }
 
-function pathFor(values: number[]) {
-  const pts = pointsFor(values)
-  return pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
+function linePath(points: Point[]) {
+  return points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
+}
+
+function areaPath(points: Point[]) {
+  const first = points[0]!
+  const last = points[points.length - 1]!
+  return `${linePath(points)} L${last.x.toFixed(1)},${baseline} L${first.x.toFixed(1)},${baseline} Z`
 }
 
 const xLabelPositions = computed(() => {
@@ -59,7 +82,7 @@ const xLabelPositions = computed(() => {
   <div class="line-chart-v2">
     <div class="line-chart-body">
       <div class="bar-y-axis-v2 line-y-axis">
-        <span v-for="step in ySteps" :key="step">{{ step }}{{ suffix }}</span>
+        <span v-for="step in ySteps" :key="step">{{ Number.isInteger(step) ? step : step.toFixed(1) }}{{ suffix }}</span>
       </div>
 
       <svg class="line-chart-svg" :viewBox="`0 0 ${width} ${height}`" preserveAspectRatio="none">
@@ -81,20 +104,11 @@ const xLabelPositions = computed(() => {
         </defs>
 
         <g v-for="(s, idx) in series" :key="s.name">
-          <path
-            :d="`${pathFor(s.values)} L${width},${height - padBottom} L${padLeft},${height - padBottom} Z`"
-            :fill="`url(#${uid}-${idx})`"
-            stroke="none"
-          />
-          <path :d="pathFor(s.values)" fill="none" :stroke="s.color" stroke-width="2.4" />
-          <circle
-            v-for="(p, i) in pointsFor(s.values)"
-            :key="i"
-            :cx="p.x"
-            :cy="p.y"
-            r="3"
-            :fill="s.color"
-          />
+          <template v-for="(seg, segIdx) in segmentsFor(s.values)" :key="segIdx">
+            <path v-if="seg.length > 1" :d="areaPath(seg)" :fill="`url(#${uid}-${idx})`" stroke="none" />
+            <path v-if="seg.length > 1" :d="linePath(seg)" fill="none" :stroke="s.color" stroke-width="2.4" />
+            <circle v-for="(p, i) in seg" :key="i" :cx="p.x" :cy="p.y" r="3" :fill="s.color" />
+          </template>
         </g>
       </svg>
     </div>
