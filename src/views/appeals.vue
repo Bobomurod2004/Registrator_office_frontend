@@ -4,10 +4,11 @@ import { useRoute } from 'vue-router'
 import DashboardLayout from '@/components/DashboardLayout.vue'
 import RequestStatusTracker from '@/components/RequestStatusTracker.vue'
 import MyKpiPanel from '@/components/MyKpiPanel.vue'
-import { extractApiError } from '@/services/http'
+import { extractApiError, isForbidden } from '@/services/http'
 import { useAuthStore } from '@/stores/auth'
 import { useRequestsStore, type RequestDetail, type RequestListItem, type RequestStatus } from '@/stores/requests'
 import { useStaffStore } from '@/stores/staff'
+import { useRolesStore } from '@/stores/roles'
 import { useLocaleStore } from '@/stores/locale'
 import { formatDateTime } from '@/utils/formatDate'
 
@@ -15,12 +16,15 @@ const route = useRoute()
 const authStore = useAuthStore()
 const requestsStore = useRequestsStore()
 const staffStore = useStaffStore()
+const rolesStore = useRolesStore()
 const localeStore = useLocaleStore()
 const m = computed(() => localeStore.m)
 
 type Filter = 'all' | RequestStatus
 const filter = ref<Filter>('all')
 const assignedToMe = ref(false)
+/** `?unassigned=true` — "rol navbati": hali hech kim ishga olmagan murojaatlar. */
+const unassignedOnly = ref(false)
 
 const visibleRequests = computed(() => {
   if (filter.value === 'all') return requestsStore.requests
@@ -29,7 +33,22 @@ const visibleRequests = computed(() => {
 
 function toggleAssignedToMe() {
   assignedToMe.value = !assignedToMe.value
-  void requestsStore.fetchRequests({ assignedToMe: assignedToMe.value })
+  // Ikkalasi bir vaqtda ma'noga ega emas: "menga tayinlangan" va "hech kimga
+  // tayinlanmagan" bir-birini istisno qiladi.
+  if (assignedToMe.value) unassignedOnly.value = false
+  void requestsStore.fetchRequests({
+    assignedToMe: assignedToMe.value,
+    unassigned: unassignedOnly.value,
+  })
+}
+
+function toggleUnassigned() {
+  unassignedOnly.value = !unassignedOnly.value
+  if (unassignedOnly.value) assignedToMe.value = false
+  void requestsStore.fetchRequests({
+    assignedToMe: assignedToMe.value,
+    unassigned: unassignedOnly.value,
+  })
 }
 
 /** Bildirishnomalar panelidan bosilganda (`AppHeader.vue`) `?request=<id>` query
@@ -45,9 +64,12 @@ async function openFromNotification() {
   if (Number.isNaN(id)) return
 
   filter.value = 'all'
-  if (assignedToMe.value) {
+  // Har qanday server-taraf filtr ochilishi kerak bo'lgan murojaatni ro'yxatdan
+  // chiqarib yuborishi mumkin — shu sabab hammasi tozalanadi.
+  if (assignedToMe.value || unassignedOnly.value) {
     assignedToMe.value = false
-    await requestsStore.fetchRequests({ assignedToMe: false })
+    unassignedOnly.value = false
+    await requestsStore.fetchRequests({ assignedToMe: false, unassigned: false })
   }
   expandedId.value = id
   await loadDetail(id)
@@ -57,7 +79,11 @@ async function openFromNotification() {
 
 onMounted(async () => {
   await requestsStore.fetchRequests()
-  if (authStore.isStaff) staffStore.fetchDepartments()
+  if (authStore.isStaff) {
+    staffStore.fetchDepartments()
+    // Rolga yo'naltirish tanlovi uchun — faqat shu ruxsat bo'lsa.
+    if (authStore.canDispatchRequests && !rolesStore.roles.length) void rolesStore.fetchRoles()
+  }
   await openFromNotification()
 })
 
@@ -305,6 +331,48 @@ async function onDocumentFileChange(event: Event, requestId: number) {
   }
 }
 
+/**
+ * "Rolga yo'naltirish" — `POST /requests/<id>/route/`. Bo'limga yo'naltiruvchi
+ * `redirect/` dan farqli: murojaat boshqa ROL navbatiga o'tkaziladi.
+ * Rol tanlanmasa backend xizmatning marshrut qoidalari bo'yicha o'zi tanlaydi.
+ * Faqat `dispatch_requests` ruxsati bor xodimga ko'rinadi.
+ */
+const routingId = ref<number | null>(null)
+const routeRole = ref<number | ''>('')
+
+/**
+ * Yo'naltirish (`/route/`, `/redirect/`) amallarida 403 — bu ruxsat yo'qligi
+ * emas, murojaat xodimning vakolat doirasidan (`request_scope`) tashqarida
+ * ekani. Backend `detail` yuborsa aynan u ko'rsatiladi, aks holda umumiy
+ * "amal bajarilmadi" o'rniga aniq tushuntirish beriladi.
+ */
+function dispatchErrorText(err: unknown): string {
+  return extractApiError(
+    err,
+    isForbidden(err) ? m.value.appeals.forbiddenScope : m.value.appeals.actionError,
+  )
+}
+
+function startRoute(id: number) {
+  routingId.value = id
+  routeRole.value = ''
+  clearActionError(id)
+}
+
+async function confirmRoute(id: number) {
+  actionBusyId.value = id
+  clearActionError(id)
+  try {
+    await requestsStore.routeRequest(id, { role: routeRole.value === '' ? null : Number(routeRole.value) })
+    routingId.value = null
+    await refreshDetailIfExpanded(id)
+  } catch (err) {
+    actionErrorMsg.value = { ...actionErrorMsg.value, [id]: dispatchErrorText(err) }
+  } finally {
+    actionBusyId.value = null
+  }
+}
+
 async function confirmRedirect(id: number) {
   if (!redirectDept.value) return
   actionBusyId.value = id
@@ -314,7 +382,7 @@ async function confirmRedirect(id: number) {
     redirectingId.value = null
     await refreshDetailIfExpanded(id)
   } catch (err) {
-    actionErrorMsg.value = { ...actionErrorMsg.value, [id]: extractApiError(err, m.value.appeals.actionError) }
+    actionErrorMsg.value = { ...actionErrorMsg.value, [id]: dispatchErrorText(err) }
   } finally {
     actionBusyId.value = null
   }
@@ -336,7 +404,14 @@ function documentLanguageLabel(lang: string) {
       <h1>{{ m.appeals.staffTitle }}</h1>
       <p class="services-subtitle">{{ m.appeals.staffSubtitle }}</p>
 
-      <MyKpiPanel standalone class="appeals-kpi-panel" />
+      <!-- SuperAdmin odatda murojaatlarga shaxsan javob beradigan (operator)
+           xodim emas, shu sabab uning shaxsiy `my-kpi` paneli har doim bo'sh
+           (hammasi 0) chiqardi va "KPI ishlamayapti" degan taassurot qoldirardi.
+           Statistika sahifasida bu panel SuperAdmin uchun allaqachon
+           yashirilgan — bu yerda ham xuddi shunday. SuperAdmin barcha
+           xodimlarning ko'rsatkichlarini Statistika → "Xodimlar reytingi"
+           bo'limida to'liq ko'radi. -->
+      <MyKpiPanel v-if="!authStore.isSuperAdmin" standalone class="appeals-kpi-panel" />
 
       <div class="services-tabs">
         <button class="btn service-tab-btn" :class="{ active: filter === 'all' }" @click="filter = 'all'">
@@ -371,6 +446,16 @@ function documentLanguageLabel(lang: string) {
         >
           {{ m.appeals.assignedToMe }}
         </button>
+        <!-- "Rol navbati": hali hech kim ishga olmagan murojaatlar
+             (backend: ?unassigned=true). -->
+        <button
+          class="btn service-tab-btn"
+          :class="{ active: unassignedOnly }"
+          type="button"
+          @click="toggleUnassigned"
+        >
+          {{ m.appeals.unassignedQueue }}
+        </button>
       </div>
 
       <p v-if="requestsStore.error" class="form-error">{{ requestsStore.error }}</p>
@@ -398,6 +483,16 @@ function documentLanguageLabel(lang: string) {
                     <svg viewBox="0 0 24 24"><path d="M7 2v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2V2h-2v2H9V2H7ZM5 9h14v11H5V9Z" /></svg>
                     {{ formatDate(item.created_at) }}
                   </span>
+                  <!-- `operator_name`/`assigned_role_name` endi ro'yxat javobida
+                       ham keladi — kartani ochmasdan ko'rinadi. Mas'ul yo'q bo'lsa
+                       qaysi rol navbatida turgani ko'rsatiladi. -->
+                  <span v-if="item.operator_name" class="req-meta-pill">
+                    <svg viewBox="0 0 24 24"><path d="M12 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" /><path d="M4 21v-1c0-3.3 3.6-6 8-6s8 2.7 8 6v1H4Z" /></svg>
+                    {{ item.operator_name }}
+                  </span>
+                  <span v-else-if="item.assigned_role_name" class="req-meta-pill is-queue">
+                    {{ m.appeals.roleQueue }}: {{ item.assigned_role_name }}
+                  </span>
                 </p>
               </div>
               <span class="req-status-badge" :style="{ background: item.status_color }">
@@ -423,6 +518,21 @@ function documentLanguageLabel(lang: string) {
                 <div class="req-detail-item">
                   <span class="field-label">{{ m.appeals.responsibleStaff }}</span>
                   <strong>{{ expandedDetail.operator_name || m.appeals.notAssigned }}</strong>
+                </div>
+                <!-- "Ish kimga tushdi" — bu "kim ko'radi" degani EMAS.
+                     Ko'rinish rolning `request_scope`i bilan belgilanadi. -->
+                <div v-if="expandedDetail.assigned_role_name" class="req-detail-item">
+                  <span class="field-label">{{ m.appeals.assignedRole }}</span>
+                  <strong>{{ expandedDetail.assigned_role_name }}</strong>
+                </div>
+                <div v-if="expandedDetail.service_route" class="req-detail-item">
+                  <span class="field-label">{{ m.appeals.serviceRoute }}</span>
+                  <strong>
+                    {{ expandedDetail.service_route.role_name }}
+                    <template v-if="expandedDetail.service_route.department_name">
+                      · {{ expandedDetail.service_route.department_name }}
+                    </template>
+                  </strong>
                 </div>
                 <div class="req-detail-item">
                   <span class="field-label">{{ m.appeals.studentHemisId }}</span>
@@ -486,6 +596,16 @@ function documentLanguageLabel(lang: string) {
                 @click="openRedirect(item.id)"
               >
                 {{ m.appeals.redirect }}
+              </button>
+              <!-- Rolga yo'naltirish — faqat `dispatch_requests` ruxsati bilan.
+                   Ekran roli NOMIGA emas, RUXSATGA qarab boshqariladi. -->
+              <button
+                v-if="authStore.canDispatchRequests && item.status !== 'completed' && item.status !== 'cancelled'"
+                class="btn appeal-btn"
+                :disabled="actionBusyId === item.id"
+                @click="startRoute(item.id)"
+              >
+                {{ m.appeals.routeToRole }}
               </button>
               <button
                 v-if="item.status === 'in_progress'"
@@ -555,11 +675,32 @@ function documentLanguageLabel(lang: string) {
             <span class="select-wrap">
               <select v-model="redirectDept" class="field-input">
                 <option value="">{{ m.appeals.selectDepartment }}</option>
-                <option v-for="d in staffStore.departments" :key="d.id" :value="d.id">{{ d.name_uz }}</option>
+                <optgroup
+                  v-for="group in staffStore.departmentGroups"
+                  :key="group.label || 'other'"
+                  :label="group.label || m.staff.departmentOtherGroup"
+                >
+                  <option v-for="d in group.items" :key="d.id" :value="d.id">{{ d.name_uz }}</option>
+                </optgroup>
               </select>
               <svg class="select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9" /></svg>
             </span>
             <button class="submit-btn req-redirect-confirm" :disabled="!redirectDept" @click="confirmRedirect(item.id)">
+              {{ m.appeals.confirm }}
+            </button>
+          </div>
+
+          <!-- Rolga yo'naltirish: rol tanlanmasa backend marshrut qoidalari
+               bo'yicha o'zi tanlaydi, shu sabab tugma har doim faol. -->
+          <div v-if="routingId === item.id" class="req-redirect-box">
+            <span class="select-wrap">
+              <select v-model="routeRole" class="field-input">
+                <option value="">{{ m.appeals.routeAutoOption }}</option>
+                <option v-for="role in rolesStore.roles" :key="role.id" :value="role.id">{{ role.name }}</option>
+              </select>
+              <svg class="select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9" /></svg>
+            </span>
+            <button class="submit-btn req-redirect-confirm" :disabled="actionBusyId === item.id" @click="confirmRoute(item.id)">
               {{ m.appeals.confirm }}
             </button>
           </div>

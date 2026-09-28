@@ -108,7 +108,7 @@ router.beforeEach((to) => {
     return { name: 'services' }
   }
 
-  if (to.meta.adminOnly && !auth.isAdmin) {
+  if (to.meta.adminOnly && !auth.canManageUsers) {
     return { path: auth.homePath }
   }
 

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import DashboardLayout from '@/components/DashboardLayout.vue'
 import { useStaffStore, type EmployeeLookupResult } from '@/stores/staff'
-import { useRolesStore } from '@/stores/roles'
+import type { UserRoleAssignment } from '@/stores/auth'
+import { useRolesStore, type Role } from '@/stores/roles'
 import { useLocaleStore } from '@/stores/locale'
 import { extractApiError } from '@/services/http'
 
@@ -12,23 +13,72 @@ const localeStore = useLocaleStore()
 const m = computed(() => localeStore.m)
 
 /** Rollar endi SuperAdmin tomonidan dinamik boshqariladi (/api/v1/auth/roles/).
- * Xodim qo'shish/tahrirlash oynasida `student` va `super_admin` kodli rollar
+ * Agar shu endpoint ishlamasa, ro'yxat bo'sh qolib, rol tanlab bo'lmasdi va
+ * "Qo'shish" tugmasi hech qanday tushuntirishsiz o'chiq qolar edi — shu sabab
+ * zaxira sifatida allaqachon yuklangan xodimlarning rollari ishlatiladi. */
+const fallbackRoles = computed<Role[]>(() => {
+  const seen = new Map<number, Role>()
+  for (const member of staffStore.members) {
+    if (!member.role || seen.has(member.role)) continue
+    seen.set(member.role, {
+      id: member.role,
+      name: member.role_display || member.role_code,
+      code: member.role_code,
+      description: '',
+      permissions: [],
+      isSystem: false,
+      usersCount: 0,
+      isActive: true,
+      requiresDepartment: false,
+      allowsLocalLogin: null,
+      // Zaxira ro'yxat faqat rol TANLASH uchun ishlatiladi — bu maydonlar
+      // rolning haqiqiy sozlamasi emas, shunchaki tipni to'ldiradi.
+      requestScope: 'department',
+      requestCategories: [],
+    })
+  }
+  return [...seen.values()]
+})
+
+/** Xodim qo'shish/tahrirlash oynasida `student` va `super_admin` kodli rollar
  * ko'rsatilmaydi — talaba bu yerdan qo'shilmaydi, SuperAdmin roli esa
  * xavfsizlik uchun shu umumiy forma orqali berilmaydi (avvalgi xatti-harakat). */
-const assignableRoles = computed(() =>
-  rolesStore.roles.filter((r) => r.code !== 'student' && r.code !== 'super_admin'),
-)
+const assignableRoles = computed(() => {
+  const source = rolesStore.roles.length ? rolesStore.roles : fallbackRoles.value
+  return source.filter((r) => r.isActive && r.code !== 'student' && r.code !== 'super_admin')
+})
 
-function roleCodeById(id: number | ''): string {
-  if (!id) return ''
-  return rolesStore.roles.find((r) => r.id === id)?.code ?? ''
+/** Qo'shimcha assignment asosiy rolni almashtirmaydi. SuperAdmin tasdiqiga
+ * ko'ra, `super_admin` ham faqat shu alohida assignment oqimida ko'rinadi;
+ * yangi xodim/primary-rol formasidagi avvalgi cheklov o'zgarishsiz qoladi.
+ * Backend yuborilgan har bir rolni `assignable_roles` va bo'lim bo'yicha
+ * baribir qayta tekshiradi. */
+const additionalAssignableRoles = computed(() => {
+  const source = rolesStore.roles.length ? rolesStore.roles : fallbackRoles.value
+  return source.filter((role) => role.isActive && role.code !== 'student')
+})
+
+/** Rollar ham, zaxira ro'yxat ham bo'sh — rol tanlash umuman mumkin emas. */
+const rolesUnavailable = computed(() => !rolesStore.loading && !assignableRoles.value.length)
+
+function roleById(id: number | ''): Role | undefined {
+  if (!id) return undefined
+  return assignableRoles.value.find((r) => r.id === id)
 }
 
-/** Faqat shu kodli rollar login+parol bilan kiradi — shu sabab parol maydoni faqat shularda ko'rsatiladi. */
+/** Rolning `allows_local_login` maydoni — login+parol bilan kiradigan rollarda
+ * parol maydoni ko'rsatiladi. Backend bu maydonni qaytarmagan bo'lsa (zaxira
+ * ro'yxat), avvalgidek kod bo'yicha aniqlanadi. */
 function isPasswordRole(roleId: number | '') {
-  const code = roleCodeById(roleId)
-  return code === 'department_admin' || code === 'super_admin'
+  const role = roleById(roleId)
+  if (!role) return false
+  if (role.allowsLocalLogin !== null) return role.allowsLocalLogin
+  return role.code === 'department_admin' || role.code === 'super_admin'
 }
+
+/** Rol `requires_department: true` bo'lsa, bo'lim tanlanmasdan yuborilsa backend rad etadi. */
+const departmentRequired = computed(() => roleById(form.value.role)?.requiresDepartment ?? false)
+const departmentMissing = computed(() => departmentRequired.value && !form.value.department)
 
 const employeeId = ref('')
 const searching = ref(false)
@@ -46,11 +96,23 @@ const creating = ref(false)
 const createError = ref('')
 const createdMessage = ref(false)
 
-onMounted(() => {
-  staffStore.fetchMembers()
+/** Rollar birinchi yuklanadi: xodimlar ro'yxatidagi talabalarni ajratish va
+ * saralash uchun talaba rolining ID'si kerak. */
+onMounted(async () => {
   staffStore.fetchDepartments()
-  rolesStore.fetchRoles()
+  await rolesStore.fetchRoles()
+  staffStore.fetchMembers()
 })
+
+const memberSearch = ref('')
+let memberSearchTimer: number | undefined
+
+function onMemberSearchInput() {
+  window.clearTimeout(memberSearchTimer)
+  memberSearchTimer = window.setTimeout(() => staffStore.fetchMembers({ search: memberSearch.value }), 400)
+}
+
+onBeforeUnmount(() => window.clearTimeout(memberSearchTimer))
 
 async function search() {
   const id = employeeId.value.trim()
@@ -77,6 +139,10 @@ const foundDepartment = computed(
 
 async function addStaff() {
   if (!lookupResult.value || lookupResult.value.exists || !form.value.role) return
+  if (departmentMissing.value) {
+    createError.value = m.value.staff.departmentRequired
+    return
+  }
 
   creating.value = true
   createError.value = ''
@@ -140,6 +206,134 @@ async function saveRole(memberId: number) {
     roleError.value = extractApiError(err, m.value.staff.roleUpdateError)
   } finally {
     roleSaving.value = false
+  }
+}
+
+/* ---------- Ko'p-rolli assignmentlar ---------- */
+
+const assignmentMember = ref<{ id: number; name: string } | null>(null)
+const roleAssignments = ref<UserRoleAssignment[]>([])
+const assignmentsLoading = ref(false)
+const assignmentsSaving = ref(false)
+const assignmentsError = ref('')
+const editingAssignmentId = ref<number | null>(null)
+const assignmentForm = ref({
+  role: '' as number | '',
+  department: '' as number | '',
+  request_scope: 'none' as 'none' | 'department' | 'category' | 'all',
+  request_categories: [] as string[],
+  starts_at: '',
+  expires_at: '',
+  note: '',
+})
+
+const ASSIGNMENT_CATEGORIES = ['reference', 'financial', 'academic', 'science']
+
+function resetAssignmentForm() {
+  editingAssignmentId.value = null
+  assignmentForm.value = {
+    role: '',
+    department: '',
+    request_scope: 'none',
+    request_categories: [],
+    starts_at: '',
+    expires_at: '',
+    note: '',
+  }
+}
+
+function toDateTimeInput(value: string | null) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const pad = (part: number) => String(part).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function toIso(value: string) {
+  if (!value) return null
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date.toISOString()
+}
+
+async function openAssignments(member: { id: number; full_name: string; hemis_id: string }) {
+  assignmentMember.value = { id: member.id, name: member.full_name || member.hemis_id }
+  assignmentsLoading.value = true
+  assignmentsError.value = ''
+  resetAssignmentForm()
+  try {
+    roleAssignments.value = await staffStore.fetchRoleAssignments(member.id)
+  } catch (err) {
+    assignmentsError.value = extractApiError(err, m.value.staff.assignmentLoadError)
+  } finally {
+    assignmentsLoading.value = false
+  }
+}
+
+function closeAssignments() {
+  assignmentMember.value = null
+  roleAssignments.value = []
+  assignmentsError.value = ''
+  resetAssignmentForm()
+}
+
+function editAssignment(assignment: UserRoleAssignment) {
+  editingAssignmentId.value = assignment.id
+  assignmentForm.value = {
+    role: assignment.role,
+    department: assignment.department ?? '',
+    request_scope: assignment.request_scope,
+    request_categories: [...assignment.request_categories],
+    starts_at: toDateTimeInput(assignment.starts_at),
+    expires_at: toDateTimeInput(assignment.expires_at),
+    note: assignment.note,
+  }
+}
+
+async function reloadAssignments() {
+  if (!assignmentMember.value) return
+  roleAssignments.value = await staffStore.fetchRoleAssignments(assignmentMember.value.id)
+}
+
+async function saveAssignment() {
+  if (!assignmentMember.value || !assignmentForm.value.role) return
+  assignmentsSaving.value = true
+  assignmentsError.value = ''
+  const payload = {
+    role: Number(assignmentForm.value.role),
+    department: assignmentForm.value.department ? Number(assignmentForm.value.department) : null,
+    request_scope: assignmentForm.value.request_scope,
+    request_categories: assignmentForm.value.request_scope === 'category' ? assignmentForm.value.request_categories : [],
+    starts_at: toIso(assignmentForm.value.starts_at),
+    expires_at: toIso(assignmentForm.value.expires_at),
+    note: assignmentForm.value.note.trim() || undefined,
+  }
+  try {
+    if (editingAssignmentId.value) {
+      await staffStore.updateRoleAssignment(assignmentMember.value.id, editingAssignmentId.value, payload)
+    } else {
+      await staffStore.createRoleAssignment(assignmentMember.value.id, payload)
+    }
+    await reloadAssignments()
+    resetAssignmentForm()
+  } catch (err) {
+    assignmentsError.value = extractApiError(err, m.value.staff.assignmentSaveError)
+  } finally {
+    assignmentsSaving.value = false
+  }
+}
+
+async function revokeAssignment(assignment: UserRoleAssignment) {
+  if (!assignmentMember.value || assignment.is_primary) return
+  assignmentsSaving.value = true
+  assignmentsError.value = ''
+  try {
+    await staffStore.revokeRoleAssignment(assignmentMember.value.id, assignment.id)
+    await reloadAssignments()
+  } catch (err) {
+    assignmentsError.value = extractApiError(err, m.value.staff.assignmentRevokeError)
+  } finally {
+    assignmentsSaving.value = false
   }
 }
 
@@ -214,27 +408,40 @@ async function confirmRemove(memberId: number) {
             <label class="field">
               <span class="field-label">{{ m.staff.role }}</span>
               <span class="select-wrap">
-                <select v-model="form.role" class="field-input">
-                  <option value="" disabled>{{ m.staff.rolePlaceholder }}</option>
+                <select v-model="form.role" class="field-input" :disabled="rolesUnavailable">
+                  <option value="" disabled>
+                    {{ rolesStore.loading ? m.staff.rolesLoading : m.staff.rolePlaceholder }}
+                  </option>
                   <option v-for="role in assignableRoles" :key="role.id" :value="role.id">
                     {{ role.name }}
                   </option>
                 </select>
                 <svg class="select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9" /></svg>
               </span>
+              <small v-if="rolesUnavailable" class="form-error">{{ m.staff.rolesUnavailable }}</small>
+              <small v-else-if="rolesStore.error" class="field-hint">{{ rolesStore.error }}</small>
             </label>
 
             <label class="field">
-              <span class="field-label">{{ m.staff.department }}</span>
+              <span class="field-label">
+                {{ m.staff.department }}<template v-if="departmentRequired"> *</template>
+              </span>
               <span class="select-wrap">
                 <select v-model="form.department" class="field-input">
                   <option value="">{{ m.staff.departmentPlaceholder }}</option>
-                  <option v-for="dept in staffStore.departments" :key="dept.id" :value="dept.id">
-                    {{ dept.name_uz }}
-                  </option>
+                  <optgroup
+                    v-for="group in staffStore.departmentGroups"
+                    :key="group.label || 'other'"
+                    :label="group.label || m.staff.departmentOtherGroup"
+                  >
+                    <option v-for="dept in group.items" :key="dept.id" :value="dept.id">
+                      {{ dept.name_uz }}
+                    </option>
+                  </optgroup>
                 </select>
                 <svg class="select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9" /></svg>
               </span>
+              <small v-if="departmentMissing" class="form-error">{{ m.staff.departmentRequired }}</small>
             </label>
 
             <label class="field">
@@ -259,7 +466,12 @@ async function confirmRemove(memberId: number) {
               <small class="field-hint">{{ m.staff.passwordHint }}</small>
             </label>
 
-            <button type="button" class="submit-btn" :disabled="creating || !form.role" @click="addStaff">
+            <button
+              type="button"
+              class="submit-btn"
+              :disabled="creating || !form.role || departmentMissing"
+              @click="addStaff"
+            >
               {{ creating ? m.staff.adding : m.staff.add }}
             </button>
 
@@ -270,7 +482,23 @@ async function confirmRemove(memberId: number) {
       </form>
 
       <div class="staff-table-wrap">
-        <p v-if="staffStore.error" class="form-error">{{ m.staff.loadError }}</p>
+        <div class="staff-search-row">
+          <input
+            v-model="memberSearch"
+            type="search"
+            class="field-input"
+            :placeholder="m.staff.searchMembersPlaceholder"
+            @input="onMemberSearchInput"
+          />
+          <span v-if="staffStore.totalUsers" class="staff-scan-hint">
+            {{ m.staff.scannedHint }}: {{ staffStore.scanned }} / {{ staffStore.totalUsers }}
+          </span>
+        </div>
+
+        <p v-if="staffStore.error" class="form-error">
+          {{ m.staff.loadError }}<template v-if="staffStore.error !== 'load'"> — {{ staffStore.error }}</template>
+        </p>
+        <p v-if="staffStore.loading" class="appeal-empty">{{ m.grant.loading }}</p>
         <table class="staff-table">
           <thead>
             <tr>
@@ -335,6 +563,14 @@ async function confirmRemove(memberId: number) {
                     />
                   </svg>
                 </button>
+                <button
+                  type="button"
+                  class="role-assignment-btn"
+                  :disabled="rolesStore.loading"
+                  @click="openAssignments(member)"
+                >
+                  {{ m.staff.manageAssignments }}
+                </button>
               </td>
               <td>{{ member.department_name || '—' }}</td>
               <td>
@@ -364,9 +600,136 @@ async function confirmRemove(memberId: number) {
                 </button>
               </td>
             </tr>
+            <tr v-if="!staffStore.members.length && !staffStore.loading">
+              <td colspan="5" class="contact-empty">{{ m.staff.noMembers }}</td>
+            </tr>
           </tbody>
         </table>
+
+        <div v-if="staffStore.hasMore" class="staff-load-more">
+          <p class="field-hint">{{ m.staff.partialListHint }}</p>
+          <button type="button" class="appeal-btn" :disabled="staffStore.loading" @click="staffStore.loadMoreMembers()">
+            {{ staffStore.loading ? m.grant.loading : m.staff.loadMore }}
+          </button>
+        </div>
       </div>
     </div>
+
+    <section v-if="assignmentMember" class="appeal-form assignment-panel">
+      <div class="assignment-panel-head">
+        <div>
+          <h3>{{ m.staff.assignmentsTitle }}</h3>
+          <p class="field-hint">{{ m.staff.assignmentsFor }}: {{ assignmentMember.name }}</p>
+        </div>
+        <button type="button" class="appeal-btn" :disabled="assignmentsSaving" @click="closeAssignments">
+          {{ m.staff.assignmentCancel }}
+        </button>
+      </div>
+
+      <p v-if="assignmentsLoading" class="appeal-empty">{{ m.staff.assignmentsLoading }}</p>
+      <p v-if="assignmentsError" class="form-error">{{ assignmentsError }}</p>
+
+      <template v-if="!assignmentsLoading">
+        <div v-if="roleAssignments.length" class="assignment-list">
+          <article v-for="assignment in roleAssignments" :key="assignment.id" class="assignment-card">
+            <div>
+              <strong>{{ assignment.role_display || assignment.role_code }}</strong>
+              <span v-if="assignment.is_primary" class="assignment-badge">{{ m.staff.assignmentPrimary }}</span>
+              <p class="field-hint assignment-meta">
+                {{ assignment.department_name || m.staff.assignmentScopeNone }}
+                · {{ assignment.request_scope }}
+                <template v-if="assignment.expires_at"> · {{ toDateTimeInput(assignment.expires_at).replace('T', ' ') }}</template>
+              </p>
+              <p v-if="assignment.note" class="assignment-note">{{ assignment.note }}</p>
+            </div>
+            <div v-if="assignment.is_active" class="assignment-actions">
+              <button type="button" class="appeal-btn" :disabled="assignmentsSaving" @click="editAssignment(assignment)">
+                {{ m.staff.assignmentEdit }}
+              </button>
+              <button
+                v-if="!assignment.is_primary"
+                type="button"
+                class="appeal-btn req-cancel-btn"
+                :disabled="assignmentsSaving"
+                @click="revokeAssignment(assignment)"
+              >
+                {{ m.staff.assignmentRevoke }}
+              </button>
+            </div>
+          </article>
+        </div>
+        <p v-else class="appeal-empty">{{ m.staff.assignmentsEmpty }}</p>
+
+        <form class="assignment-form" @submit.prevent="saveAssignment">
+          <h4>{{ editingAssignmentId ? m.staff.assignmentEdit : m.staff.assignmentAdd }}</h4>
+          <div class="assignment-form-grid">
+            <label class="field">
+              <span class="field-label">{{ m.staff.assignmentRole }}</span>
+              <span class="select-wrap">
+                <select v-model="assignmentForm.role" class="field-input" :disabled="!!editingAssignmentId || rolesUnavailable">
+                  <option value="" disabled>{{ m.staff.rolePlaceholder }}</option>
+                  <option v-for="role in additionalAssignableRoles" :key="role.id" :value="role.id">{{ role.name }}</option>
+                </select>
+                <svg class="select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9" /></svg>
+              </span>
+            </label>
+            <label class="field">
+              <span class="field-label">{{ m.staff.assignmentScope }}</span>
+              <span class="select-wrap">
+                <select v-model="assignmentForm.request_scope" class="field-input">
+                  <option value="none">{{ m.staff.assignmentScopeNone }}</option>
+                  <option value="department">{{ m.staff.assignmentScopeDepartment }}</option>
+                  <option value="category">{{ m.staff.assignmentScopeCategory }}</option>
+                  <option value="all">{{ m.staff.assignmentScopeAll }}</option>
+                </select>
+                <svg class="select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9" /></svg>
+              </span>
+            </label>
+            <label class="field">
+              <span class="field-label">{{ m.staff.assignmentDepartment }}</span>
+              <span class="select-wrap">
+                <select v-model="assignmentForm.department" class="field-input">
+                  <option value="">{{ m.staff.departmentPlaceholder }}</option>
+                  <optgroup
+                    v-for="group in staffStore.departmentGroups"
+                    :key="group.label || 'other'"
+                    :label="group.label || m.staff.departmentOtherGroup"
+                  >
+                    <option v-for="dept in group.items" :key="dept.id" :value="dept.id">{{ dept.name_uz }}</option>
+                  </optgroup>
+                </select>
+                <svg class="select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9" /></svg>
+              </span>
+            </label>
+            <label class="field">
+              <span class="field-label">{{ m.staff.assignmentStartsAt }}</span>
+              <input v-model="assignmentForm.starts_at" type="datetime-local" class="field-input" />
+            </label>
+            <label class="field">
+              <span class="field-label">{{ m.staff.assignmentExpiresAt }}</span>
+              <input v-model="assignmentForm.expires_at" type="datetime-local" class="field-input" />
+            </label>
+          </div>
+          <div v-if="assignmentForm.request_scope === 'category'" class="assignment-categories">
+            <label v-for="category in ASSIGNMENT_CATEGORIES" :key="category" class="gs-checkbox-field">
+              <input v-model="assignmentForm.request_categories" type="checkbox" :value="category" />
+              {{ category }}
+            </label>
+          </div>
+          <label class="field">
+            <span class="field-label">{{ m.staff.assignmentNote }}</span>
+            <textarea v-model="assignmentForm.note" class="field-input" rows="2" />
+          </label>
+          <div class="info-form-actions">
+            <button type="submit" class="submit-btn" :disabled="assignmentsSaving || !assignmentForm.role">
+              {{ m.staff.assignmentSave }}
+            </button>
+            <button type="button" class="appeal-btn" :disabled="assignmentsSaving" @click="resetAssignmentForm">
+              {{ m.grant.cancelEdit }}
+            </button>
+          </div>
+        </form>
+      </template>
+    </section>
   </DashboardLayout>
 </template>

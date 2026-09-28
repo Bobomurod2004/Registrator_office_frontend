@@ -35,8 +35,16 @@ async function refreshAccessToken(): Promise<string> {
   const refreshToken = getRefreshToken()
   if (!refreshToken) throw new Error('Refresh token yo\'q')
 
+  // DIQQAT: `.env` dagi VITE_API_BASE_URL oxirida `/` bo'lishi mumkin
+  // (masalan `http://localhost:8000/`). Avval bu yerda manzil oddiy qo'shish
+  // orqali yasalardi va natijada `http://localhost:8000//api/v1/...` — ikkita
+  // slash — chiqib ketardi. Django bunday yo'lni normallashtirmaydi: server
+  // 404 qaytaradi (jonli tekshirildi: `//api/...` → 404, `/api/...` → 401).
+  // Ya'ni access token muddati tugagach token YANGILANMASDAN qolar, natijada
+  // sessiya tozalanib foydalanuvchi login sahifasiga uloqtirilardi.
+  const base = (import.meta.env.VITE_API_BASE_URL || '/').replace(/\/+$/, '')
   const { data } = await axios.post(
-    `${import.meta.env.VITE_API_BASE_URL || '/'}/api/v1/auth/token/refresh/`,
+    `${base}/api/v1/auth/token/refresh/`,
     { refresh: refreshToken },
   )
   updateTokens(data.access, data.refresh)
@@ -63,6 +71,17 @@ export function extractApiError(err: unknown, fallback: string): string {
     if (parts.length) return parts.join(' ')
   }
   return fallback
+}
+
+/**
+ * Backend endi ruxsatdan tashqari murojaat xodimning VAKOLAT DOIRASIDA
+ * (`request_scope`) ekanini ham tekshiradi: masalan `scope=department`
+ * dispetcher faqat o'z bo'limi murojaatini yo'naltira oladi. Bunday holda
+ * `dispatch_requests` ruxsati bor bo'lsa ham 403 keladi — ya'ni tugmani
+ * yashirish emas, aniq sababni ko'rsatish kerak.
+ */
+export function isForbidden(err: unknown): boolean {
+  return (err as { response?: { status?: number } })?.response?.status === 403
 }
 
 http.interceptors.response.use(

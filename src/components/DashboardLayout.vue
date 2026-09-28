@@ -36,7 +36,7 @@ const menuLinks = computed<MenuLink[]>(() =>
     ? [
         { to: '/statistics', label: m.value.menu.statistics, icon: 'stats' },
         { to: '/appeals', label: m.value.menu.appeals, icon: 'appeals' },
-        ...(authStore.isAdmin
+        ...(authStore.canManageUsers
           ? [{ to: '/staff', label: m.value.menu.addStaff, icon: 'staff' as IconName }]
           : []),
         { to: '/grant', label: m.value.menu.grant, icon: 'grant' },

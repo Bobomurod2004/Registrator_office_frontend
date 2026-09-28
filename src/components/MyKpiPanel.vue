@@ -2,7 +2,6 @@
 import { computed, onMounted, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useLocaleStore } from '@/stores/locale'
-import { useStaffStore } from '@/stores/staff'
 import { useStatisticsStore } from '@/stores/statistics'
 import StarDistribution from '@/components/stats/StarDistribution.vue'
 
@@ -17,7 +16,6 @@ const props = withDefaults(defineProps<{ standalone?: boolean; allowEmployeeSele
 const authStore = useAuthStore()
 const localeStore = useLocaleStore()
 const statsStore = useStatisticsStore()
-const staffStore = useStaffStore()
 const m = computed(() => localeStore.m)
 
 const loading = ref(false)
@@ -33,9 +31,19 @@ async function load() {
   }
 }
 
+/**
+ * Xodim tanlash ro'yxati ATAYLAB `statistics/employees/` dan to'ldiriladi,
+ * `staffStore.members` dan EMAS. Sabablari:
+ *  1. `staffStore.members` — `/auth/users/` ustidan cheklangan sahifali skan
+ *     (23 000+ talaba aralash keladi), ya'ni xodimlarning bir qismi ro'yxatga
+ *     umuman tushmasdi — admin ularning KPI'sini tanlay olmasdi.
+ *  2. `my-kpi` faqat murojaatlarga javob beradigan xodim (operator) uchun
+ *     ma'noga ega. `statistics/employees/` aynan shu xodimlarni qaytaradi,
+ *     shu sabab ro'yxatda KPI'si bo'sh chiqadigan odam bo'lmaydi.
+ */
 onMounted(() => {
   if (props.standalone) void load()
-  if (showEmployeeSelect.value && !staffStore.members.length) void staffStore.fetchMembers()
+  if (showEmployeeSelect.value && !statsStore.employees.length) void statsStore.fetchEmployees()
 })
 
 const kpi = computed(() => statsStore.myKpi)
@@ -62,8 +70,8 @@ function barWidth(value: number) {
         <span v-if="showEmployeeSelect" class="select-wrap my-kpi-employee-select">
           <select v-model="selectedEmployeeId" class="field-input" @change="load">
             <option value="">{{ m.statistics.myKpiMineOption }}</option>
-            <option v-for="member in staffStore.members" :key="member.id" :value="member.id">
-              {{ member.full_name }}
+            <option v-for="employee in statsStore.employees" :key="employee.id" :value="employee.id">
+              {{ employee.fullName }}
             </option>
           </select>
           <svg class="select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9" /></svg>

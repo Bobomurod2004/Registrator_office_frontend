@@ -23,6 +23,17 @@ export interface RequestListItem {
   is_overdue: boolean
   created_at: string
   resolved_at: string | null
+  /** Mas'ul xodim. Avval faqat detail javobida bor edi — endi ro'yxatda ham
+   * qaytadi, shu sabab kartani ochmasdan ham ko'rsatish mumkin.
+   * DIQQAT: backend endi `null` bo'lganda ham kalitni tushirib qoldirmaydi
+   * (avval `operator_name` butunlay yo'q bo'lardi), lekin eski deploymentlar
+   * uchun ixtiyoriy qoldirilgan. */
+  operator?: number | null
+  operator_name?: string | null
+  /** Murojaat qaysi ROLGA tayinlangani ("ish kimga tushdi").
+   * Bu "kim ko'radi" degani EMAS — ko'rinish `request_scope` bilan belgilanadi. */
+  assigned_role?: number | null
+  assigned_role_name?: string | null
 }
 
 export interface RequestDocument {
@@ -58,12 +69,25 @@ export interface RequestPayment {
   created_at: string
 }
 
+/** `/requests/<id>/` detail javobidagi, murojaatni shu rolga olib kelgan
+ * xizmat marshruti (`ServiceRoleRoute` ning qisqartirilgan ko'rinishi). */
+export interface RequestServiceRoute {
+  id: number
+  role: number
+  role_name: string
+  department: number | null
+  department_name: string | null
+  priority: number
+  dispatch_mode: string
+}
+
 export interface RequestDetail extends RequestListItem {
   service: number
   student: number
   student_hemis_id: string
   operator: number | null
-  operator_name: string
+  operator_name: string | null
+  service_route?: RequestServiceRoute | null
   department: number
   document_language: DocumentLanguage
   file_format: FileFormat
@@ -75,6 +99,15 @@ export interface RequestDetail extends RequestListItem {
   rating: { id: number; stars: number; comment: string; created_at: string } | null
   payment: RequestPayment | null
   updated_at: string
+}
+
+export interface RequestFilters {
+  /** `?assigned_to_me=true` — faqat menga tayinlanganlar (TZ 7.2). */
+  assignedToMe?: boolean
+  /** `?unassigned=true` — hali hech kimga olinmagan, "rol navbati"dagi murojaatlar. */
+  unassigned?: boolean
+  /** `?assigned_role=<id>` — muayyan rolga tayinlanganlar. */
+  assignedRole?: number | null
 }
 
 export interface CreateRequestPayload {
@@ -94,19 +127,22 @@ export const useRequestsStore = defineStore('requests', () => {
    *  yo'naltirish kabi amallardan keyingi ichki qayta yuklashlar ham shu
    *  filtrni saqlab qolishi uchun (aks holda "Menga tayinlangan" filtri
    *  faol bo'lganda ham har bir amaldan keyin butun ro'yxatga qaytib qolardi). */
-  let lastAssignedToMe = false
+  /** Oxirgi ishlatilgan server-taraf filtrlar. Status o'zgartirish/yo'naltirish
+   * kabi amallardan keyin ichki `fetchRequests()` argumentsiz chaqiriladi —
+   * shunda ham foydalanuvchi tanlagan filtr saqlanib qolishi kerak. */
+  let lastFilters: RequestFilters = {}
 
-  /** `assignedToMe: true` — xodim faqat o'ziga tayinlangan murojaatlarni
-   *  ko'radi (backend: `?assigned_to_me=true`, TZ 7.2). */
-  async function fetchRequests(options: { assignedToMe?: boolean } = {}) {
-    lastAssignedToMe = options.assignedToMe ?? lastAssignedToMe
+  async function fetchRequests(options: RequestFilters = {}) {
+    lastFilters = { ...lastFilters, ...options }
     loading.value = true
     error.value = ''
     try {
       const { data } = await http.get('/api/v1/requests/', {
         params: {
           page_size: 100,
-          ...(lastAssignedToMe ? { assigned_to_me: true } : {}),
+          ...(lastFilters.assignedToMe ? { assigned_to_me: true } : {}),
+          ...(lastFilters.unassigned ? { unassigned: true } : {}),
+          ...(lastFilters.assignedRole ? { assigned_role: lastFilters.assignedRole } : {}),
         },
       })
       requests.value = data.results ?? data
@@ -174,7 +210,22 @@ export const useRequestsStore = defineStore('requests', () => {
     await fetchRequests()
   }
 
+  /**
+   * POST /api/v1/requests/<id>/route/ — murojaatni boshqa ROLGA yo'naltiradi
+   * (bo'limga yo'naltiruvchi `redirect/` dan farqli). `role` berilmasa backend
+   * xizmatning marshrut qoidalari bo'yicha o'zi tanlaydi.
+   * Bu amal `dispatch_requests` ruxsatini talab qiladi.
+   */
+  async function routeRequest(id: number, payload: { role?: number | null; comment?: string } = {}) {
+    await http.post(`/api/v1/requests/${id}/route/`, {
+      ...(payload.role ? { role: payload.role } : {}),
+      ...(payload.comment ? { comment: payload.comment } : {}),
+    })
+    await fetchRequests()
+  }
+
   return {
+    routeRequest,
     requests,
     loading,
     error,

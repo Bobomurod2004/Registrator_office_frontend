@@ -223,9 +223,21 @@ function stopHemisSync() {
         <span>{{ m.grant.syncUpdated }}: {{ gsStore.syncTotals.updated }}</span>
         <span>{{ m.grant.syncSkipped }}: {{ gsStore.syncTotals.skipped }}</span>
         <span v-if="gsStore.syncTotals.errors">{{ m.grant.syncErrors }}: {{ gsStore.syncTotals.errors }}</span>
+        <span v-if="gsStore.syncTotals.facultyMissing" class="gs-sync-warn">
+          {{ m.grant.syncFacultyMissing }}: {{ gsStore.syncTotals.facultyMissing }}
+        </span>
         <span>{{ m.grant.syncDeactivated }}: {{ gsStore.syncTotals.deactivated }}</span>
         <span v-if="gsStore.syncTotalCount">{{ m.grant.syncTotalCount }}: {{ gsStore.syncTotalCount }}</span>
       </div>
+    </div>
+
+    <!-- Sinxronizatsiya tugagach ham ko'rinib turadi — admin qaysi fakultet yetishmayotganini bilishi kerak. -->
+    <div v-if="authStore.isAdmin && gsStore.syncTotals.facultyMissing" class="gs-faculty-missing">
+      <strong>{{ m.grant.syncFacultyMissingTitle }}: {{ gsStore.syncTotals.facultyMissing }}</strong>
+      <p>{{ m.grant.syncFacultyMissingHint }}</p>
+      <ul v-if="gsStore.syncFacultyMissingNames.length">
+        <li v-for="name in gsStore.syncFacultyMissingNames" :key="name">{{ name }}</li>
+      </ul>
     </div>
 
     <p v-if="authStore.isAdmin && syncedMsg" class="form-success">{{ m.grant.hemisSynced }}</p>

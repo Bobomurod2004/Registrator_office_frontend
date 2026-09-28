@@ -2969,6 +2969,15 @@ select.field-input option {
   flex-shrink: 0;
 }
 
+/* Mas'ul xodim hali biriktirilmagan — murojaat rol navbatida turibdi. */
+.req-meta-pill.is-queue {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--dash-border-soft);
+  color: var(--dash-orange);
+  font-weight: 600;
+}
+
 .appeal-message {
   margin: 12px 0;
   font-size: 14px;
@@ -3797,6 +3806,136 @@ select.field-input option {
 .role-edit-error {
   margin-top: 4px;
   white-space: normal;
+}
+
+.role-assignment-btn {
+  display: block;
+  margin: 5px 0 0 6px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #4c72ac;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.role-assignment-btn:hover:not(:disabled) {
+  background: #eef4ff;
+}
+
+.role-assignment-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.assignment-panel {
+  max-width: 980px;
+  margin-top: 20px;
+}
+
+.assignment-panel-head,
+.assignment-card,
+.assignment-actions,
+.assignment-categories {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.assignment-panel-head {
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.assignment-panel-head h3,
+.assignment-form h4 {
+  margin: 0;
+}
+
+.assignment-panel-head .field-hint {
+  margin: 4px 0 0;
+}
+
+.assignment-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.assignment-card {
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid rgba(193, 211, 240, 0.7);
+  border-radius: 12px;
+  background: rgba(47, 109, 255, 0.03);
+}
+
+.assignment-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: #2f6dff;
+  background: rgba(47, 109, 255, 0.12);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.assignment-meta,
+.assignment-note {
+  margin: 4px 0 0;
+}
+
+.assignment-note {
+  color: #3a567f;
+  white-space: normal;
+}
+
+.assignment-form {
+  display: grid;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(193, 211, 240, 0.7);
+}
+
+.assignment-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.assignment-categories {
+  flex-wrap: wrap;
+}
+
+:root[data-theme='dark'] .role-assignment-btn {
+  color: #9fc3ff;
+}
+
+:root[data-theme='dark'] .role-assignment-btn:hover:not(:disabled) {
+  background: rgba(110, 160, 255, 0.14);
+}
+
+:root[data-theme='dark'] .assignment-card {
+  border-color: rgba(84, 109, 154, 0.55);
+  background: rgba(110, 160, 255, 0.06);
+}
+
+:root[data-theme='dark'] .assignment-note {
+  color: #c6d8f5;
+}
+
+@media (max-width: 780px) {
+  .assignment-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .assignment-card,
+  .assignment-panel-head {
+    flex-direction: column;
+  }
 }
 
 .staff-remove-confirm,
@@ -5593,6 +5732,69 @@ select.field-input option {
   color: #9fb6d8;
 }
 
+.staff-search-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.staff-search-row .field-input {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.staff-scan-hint {
+  font-size: 12.5px;
+  color: var(--dash-text-muted, #6f87ab);
+  font-variant-numeric: tabular-nums;
+}
+
+.staff-load-more {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.gs-sync-warn {
+  font-weight: 600;
+  color: #b06a10;
+}
+
+.gs-faculty-missing {
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(240, 144, 10, 0.45);
+  background: rgba(240, 144, 10, 0.08);
+  font-size: 13px;
+  color: #7a4a06;
+}
+
+.gs-faculty-missing p {
+  margin: 6px 0 0;
+  line-height: 1.5;
+}
+
+.gs-faculty-missing ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 3px;
+}
+
+:root[data-theme='dark'] .gs-sync-warn {
+  color: #f0a640;
+}
+
+:root[data-theme='dark'] .gs-faculty-missing {
+  border-color: rgba(240, 166, 64, 0.45);
+  background: rgba(240, 166, 64, 0.1);
+  color: #f2cea0;
+}
+
 .gs-table-wrap {
   margin-bottom: 8px;
 }
@@ -5655,6 +5857,164 @@ select.field-input option {
 .gs-row-actions .appeal-btn {
   padding: 5px 10px;
   font-size: 12px;
+}
+
+/* ---------- Xizmatning yo'naltirish qoidalari paneli (Sozlamalar) ---------- */
+
+/* Jadval qatori ichiga ochiladigan panel — `--dash-*` tokenlari orqali
+   yozilgan, shu sabab qorong'i tema uchun alohida dublikat kerak emas. */
+.route-panel-row > td {
+  padding: 0;
+  background: var(--dash-surface-soft);
+}
+
+.route-panel {
+  padding: 16px 18px 20px;
+  border-top: 2px solid var(--dash-blue);
+}
+
+.route-panel-head h4 {
+  margin: 0 0 2px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--dash-text-primary);
+}
+
+.route-panel-head .services-subtitle {
+  margin: 0 0 14px;
+}
+
+.route-form {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--dash-border);
+}
+
+.route-form h5 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--dash-text-muted);
+}
+
+.route-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  /* `end` emas: "Ustuvorlik" maydonida izoh matni bor, shu sabab u boshqa
+     maydonlardan balandroq — pastdan tekislanganda yorliqlar bir tekis
+     turmay, forma qiyshiq ko'rinardi. Tepadan tekislanadi. */
+  align-items: start;
+}
+
+/* Rol formasidagi ruxsatlar va kategoriyalar katakchalari uchun. Bu klass
+   shablonlarda ishlatilgan, lekin unga hech qachon uslub yozilmagan edi —
+   natijada katakchalar bir-biriga yopishib, o'qish qiyin bo'lardi. */
+.service-checkbox-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+}
+
+/* Panel ochiq turganda tugma "bosilgan" holatda ko'rinadi. `.active` klassi
+   `.appeal-btn` uchun umuman aniqlanmagan edi (faqat `.service-tab-btn` uchun
+   bor), shu sabab ochiq holat yorug' temada deyarli bilinmasdi. */
+.route-toggle-btn.is-open {
+  background: var(--dash-blue);
+  border-color: var(--dash-blue);
+  color: #fff;
+}
+
+.route-toggle-btn.is-open .route-count {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+/* Qatordagi "Yo'naltirish" tugmasidagi qoidalar soni. */
+.route-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 5px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--dash-blue);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* Marshrutda shu rol+bo'lim uchun mos xodimlar soni. 0 bo'lsa marshrut amalda
+   ishlamaydi, shu sabab qizil ta'kid bilan ajratiladi. */
+.route-staff-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 11px;
+  background: rgba(47, 109, 255, 0.12);
+  color: var(--dash-blue);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.route-staff-badge.is-empty {
+  background: rgba(224, 64, 90, 0.14);
+  color: #d0324c;
+}
+
+/* "xizmatning bo'limi" izohi — jadval katakchasi ichida `.field-hint` ishlamaydi
+   (`.staff-table td` uni bosib ketadi), shu sabab o'z klassi ikki klassli
+   selektor bilan beriladi. */
+.staff-table .route-from-service {
+  display: block;
+  margin-top: 2px;
+  color: #6b84a8;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+:root[data-theme='dark'] .staff-table .route-from-service {
+  color: #8098bd;
+}
+
+/* DIQQAT: `.staff-table td` (va uning qorong'i tema varianti, u faylda KEYINROQ
+   turadi) yakka `.route-warn` klassini bosib ketadi — shu sabab selektor
+   ataylab kuchliroq (`.staff-table td.route-warn`) qilingan. */
+.route-warn-row td {
+  padding-top: 0;
+}
+
+.staff-table td.route-warn {
+  color: #d0324c;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+:root[data-theme='dark'] .route-staff-badge {
+  background: rgba(61, 178, 255, 0.16);
+  color: #6ec4ff;
+}
+
+:root[data-theme='dark'] .route-staff-badge.is-empty,
+:root[data-theme='dark'] .staff-table td.route-warn {
+  color: #ff8fa3;
+}
+
+:root[data-theme='dark'] .route-staff-badge.is-empty {
+  background: rgba(255, 143, 163, 0.16);
+}
+
+@media (max-width: 640px) {
+  .route-form-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .gs-doc-link {

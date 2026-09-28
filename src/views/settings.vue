@@ -5,13 +5,23 @@ import { extractApiError } from '@/services/http'
 import { useLocaleStore } from '@/stores/locale'
 import { useSystemSettingsStore } from '@/stores/systemSettings'
 import { useStaffStore } from '@/stores/staff'
-import { useRolesStore, type Role, type RolePayload } from '@/stores/roles'
+import {
+  useRolesStore,
+  REQUEST_CATEGORIES,
+  REQUEST_SCOPES,
+  type RequestScope,
+  type Role,
+  type RolePayload,
+} from '@/stores/roles'
 import {
   useServicesStore,
+  type DispatchMode,
   type Service,
   type ServiceCategory,
   type ServiceLang,
   type ServicePayload,
+  type ServiceRoleRoute,
+  type ServiceRoleRoutePayload,
   type FileFormat,
   type SlaUnit,
 } from '@/stores/services'
@@ -30,6 +40,32 @@ onMounted(() => {
   rolesStore.fetchRoles()
   rolesStore.fetchPermissionCatalog()
 })
+
+/* ---------- Bo'limlar keshini yangilash ---------- */
+
+/**
+ * Bo'limlar ro'yxati sahifa ochilganda bir marta yuklanib keshlanadi. Endi
+ * backendda har kuni 00:30 da HEMIS sinxronizatsiyasi ishlaydi: bo'lim nomi
+ * o'zgarishi, yangisi qo'shilishi yoki eskisi `is_active=false` bo'lishi
+ * mumkin. Admin sahifani yopmasdan ro'yxatni yangilab olishi uchun tugma.
+ */
+const departmentsRefreshing = ref(false)
+const departmentsRefreshed = ref(false)
+const departmentsRefreshError = ref('')
+
+async function refreshDepartments() {
+  departmentsRefreshing.value = true
+  departmentsRefreshed.value = false
+  departmentsRefreshError.value = ''
+  try {
+    await staffStore.fetchDepartments({ force: true })
+    departmentsRefreshed.value = true
+  } catch (err) {
+    departmentsRefreshError.value = extractApiError(err, m.value.settings.refreshDepartmentsError)
+  } finally {
+    departmentsRefreshing.value = false
+  }
+}
 
 /* ---------- Tizim sozlamalari ---------- */
 
@@ -207,7 +243,12 @@ function cancelServiceForm() {
 }
 
 async function submitServiceForm() {
-  if (!serviceForm.value.code.trim() || !serviceNames.value.uz.trim() || !serviceForm.value.department) return
+  // Avval bu tekshiruv jim `return` qilardi — tugma bosilgani bilan hech narsa
+  // sodir bo'lmas, sabab ham ko'rsatilmas edi ("edit qilib bo'lmayapti").
+  if (!serviceForm.value.code.trim() || !serviceNames.value.uz.trim() || !serviceForm.value.department) {
+    serviceSaveErrorMsg.value = m.value.settings.serviceRequiredMissing
+    return
+  }
 
   serviceSaving.value = true
   serviceSaveErrorMsg.value = ''
@@ -247,6 +288,149 @@ async function submitServiceForm() {
   }
 }
 
+/* ---------- Xizmatning yo'naltirish qoidalari (qaysi rol/bo'limga tushadi) ---------- */
+
+/**
+ * Har bir xizmat uchun `/api/v1/services/{id}/routes/` orqali boshqariladigan
+ * qoidalar: murojaat QAYSI ROL va QAYSI BO'LIM xodimlariga borib tushishi.
+ * `priority` — kichik raqam avval ko'riladi; `dispatch_mode` — avtomatik
+ * taqsimlanadimi (`auto_balanced`) yoki qo'lda ko'rib chiqiladimi
+ * (`manual_review`). `department: null` — qoida bo'limga bog'lanmagan.
+ */
+const DISPATCH_OPTIONS: DispatchMode[] = ['auto_balanced', 'manual_review']
+
+const routesServiceId = ref<number | null>(null)
+const routesLoading = ref(false)
+const routesError = ref('')
+
+/** `priority` ATAYLAB bo'sh (`''`) bo'lishi mumkin — backend bo'sh qoldirilsa
+ * keyingi bo'sh raqamni o'zi beradi. Band raqam yoki takroriy rol yuborilsa
+ * backend tushunarli 400 qaytaradi, u `extractApiError()` orqali ko'rsatiladi. */
+const routeForm = ref({
+  role: '' as number | '',
+  department: '' as number | '',
+  priority: '' as number | '',
+  dispatch_mode: 'auto_balanced' as DispatchMode,
+  is_active: true,
+})
+const editingRouteId = ref<number | null>(null)
+const routeSaving = ref(false)
+const routeFormError = ref('')
+const deletingRouteId = ref<number | null>(null)
+
+/**
+ * Marshrutning HAQIQIY bo'limi. `route.department` — ixtiyoriy almashtirish,
+ * migratsiyadan keyin barcha marshrutlarda `null`, shu sabab eski kod (faqat
+ * `department_name`ni o'qigan) hamma qator uchun "Barcha bo'limlar" deb
+ * ko'rsatardi — bu noto'g'ri edi: murojaat aslida xizmatning aniq bo'limiga
+ * tushadi. Backend `effective_department_name`ni bermasa (eski deployment yoki
+ * `/routes/` endpointi qisqartirilgan serializer ishlatsa), xizmatning o'z
+ * bo'limiga tushamiz — natija bir xil bo'ladi.
+ */
+function routeDepartmentName(route: ServiceRoleRoute, service: Service): string {
+  return route.effective_department_name || route.department_name || service.department_name || '—'
+}
+
+function dispatchModeLabel(mode: DispatchMode) {
+  return mode === 'manual_review'
+    ? m.value.settings.routeDispatchManual
+    : m.value.settings.routeDispatchAuto
+}
+
+function resetRouteForm() {
+  editingRouteId.value = null
+  routeFormError.value = ''
+  routeForm.value = {
+    role: '',
+    department: '',
+    priority: '',
+    dispatch_mode: 'auto_balanced',
+    is_active: true,
+  }
+}
+
+/** Qatordagi "Yo'naltirish" tugmasi — bir xizmat ochiq bo'lsa, ikkinchisini
+ * bosish avvalgisini yopadi; xuddi shu xizmatni qayta bosish esa panelni yopadi. */
+async function toggleRoutes(service: Service) {
+  if (routesServiceId.value === service.id) {
+    routesServiceId.value = null
+    return
+  }
+  routesServiceId.value = service.id
+  resetRouteForm()
+  routesError.value = ''
+  routesLoading.value = true
+  try {
+    await servicesStore.fetchServiceRoutes(service.id)
+  } catch (err) {
+    routesError.value = extractApiError(err, m.value.settings.routeLoadError)
+  } finally {
+    routesLoading.value = false
+  }
+}
+
+function startEditRoute(route: ServiceRoleRoute) {
+  editingRouteId.value = route.id
+  routeFormError.value = ''
+  routeForm.value = {
+    role: route.role,
+    department: route.department ?? '',
+    priority: route.priority,
+    dispatch_mode: route.dispatch_mode,
+    is_active: route.is_active,
+  }
+}
+
+async function submitRouteForm() {
+  if (!routesServiceId.value) return
+  if (!routeForm.value.role) {
+    routeFormError.value = m.value.settings.routeRoleRequired
+    return
+  }
+
+  routeSaving.value = true
+  routeFormError.value = ''
+  try {
+    const payload: ServiceRoleRoutePayload = {
+      role: Number(routeForm.value.role),
+      department: routeForm.value.department === '' ? null : Number(routeForm.value.department),
+      dispatch_mode: routeForm.value.dispatch_mode,
+      is_active: routeForm.value.is_active,
+    }
+    // Bo'sh qoldirilsa `priority` umuman yuborilmaydi — backend keyingi bo'sh
+    // raqamni o'zi tanlaydi.
+    if (routeForm.value.priority !== '') payload.priority = Number(routeForm.value.priority)
+    if (editingRouteId.value) {
+      await servicesStore.updateServiceRoute(routesServiceId.value, editingRouteId.value, payload)
+    } else {
+      await servicesStore.addServiceRoute(routesServiceId.value, payload)
+    }
+    // POST/PATCH javobi hisoblanadigan maydonlarni (`effective_department`,
+    // `eligible_staff_count`) qaytarmasligi mumkin — ro'yxatni qayta olib,
+    // jadvalda haqiqiy holat ko'rinishini kafolatlaymiz.
+    await servicesStore.fetchServiceRoutes(routesServiceId.value).catch(() => {})
+    resetRouteForm()
+  } catch (err) {
+    routeFormError.value = extractApiError(err, m.value.settings.routeSaveError)
+  } finally {
+    routeSaving.value = false
+  }
+}
+
+async function removeRoute(routeId: number) {
+  if (!routesServiceId.value) return
+  deletingRouteId.value = routeId
+  routeFormError.value = ''
+  try {
+    await servicesStore.removeServiceRoute(routesServiceId.value, routeId)
+    if (editingRouteId.value === routeId) resetRouteForm()
+  } catch (err) {
+    routeFormError.value = extractApiError(err, m.value.settings.routeDeleteError)
+  } finally {
+    deletingRouteId.value = null
+  }
+}
+
 const deletingServiceId = ref<number | null>(null)
 const serviceDeleteErrorMsg = ref('')
 
@@ -277,15 +461,36 @@ const permissionGroups = computed(() => {
 
 const showRoleForm = ref(false)
 const editingRoleId = ref<number | null>(null)
-const roleForm = ref({ name: '', code: '', description: '' })
+/** `request_scope` — standart `department`. ATAYLAB `none` emas: backend
+ * jamoasi ogohlantirgan, `none` bilan xodim tizimda deyarli hech narsa
+ * ko'rmaydi, shu sabab bu maydon formada majburiy tanlov. */
+const roleForm = ref({
+  name: '',
+  code: '',
+  description: '',
+  request_scope: 'department' as RequestScope,
+})
 const roleFormPermissions = ref<Set<string>>(new Set())
+const roleFormCategories = ref<Set<string>>(new Set())
 const roleSaving = ref(false)
 const roleSaveErrorMsg = ref('')
 const roleSavedMsg = ref(false)
 
+function roleScopeLabel(scope: RequestScope) {
+  return m.value.settings.roleScopes[scope]
+}
+
+function toggleRoleCategory(category: string) {
+  const next = new Set(roleFormCategories.value)
+  if (next.has(category)) next.delete(category)
+  else next.add(category)
+  roleFormCategories.value = next
+}
+
 function resetRoleForm() {
-  roleForm.value = { name: '', code: '', description: '' }
+  roleForm.value = { name: '', code: '', description: '', request_scope: 'department' }
   roleFormPermissions.value = new Set()
+  roleFormCategories.value = new Set()
   roleSaveErrorMsg.value = ''
 }
 
@@ -297,8 +502,14 @@ function openAddRoleForm() {
 
 function openEditRoleForm(role: Role) {
   editingRoleId.value = role.id
-  roleForm.value = { name: role.name, code: role.code, description: role.description }
+  roleForm.value = {
+    name: role.name,
+    code: role.code,
+    description: role.description,
+    request_scope: role.requestScope,
+  }
   roleFormPermissions.value = new Set(role.permissions)
+  roleFormCategories.value = new Set(role.requestCategories)
   roleSaveErrorMsg.value = ''
   showRoleForm.value = true
 }
@@ -317,7 +528,14 @@ function togglePermission(code: string) {
 }
 
 async function submitRoleForm() {
-  if (!roleForm.value.name.trim()) return
+  if (!roleForm.value.name.trim()) {
+    roleSaveErrorMsg.value = m.value.settings.roleNameRequired
+    return
+  }
+  if (roleForm.value.request_scope === 'category' && !roleFormCategories.value.size) {
+    roleSaveErrorMsg.value = m.value.settings.roleCategoriesRequired
+    return
+  }
 
   roleSaving.value = true
   roleSaveErrorMsg.value = ''
@@ -327,6 +545,10 @@ async function submitRoleForm() {
       code: roleForm.value.code.trim() || undefined,
       description: roleForm.value.description.trim() || undefined,
       permissions: Array.from(roleFormPermissions.value),
+      request_scope: roleForm.value.request_scope,
+      // Kategoriyalar faqat `category` doirasida ma'noga ega.
+      request_categories:
+        roleForm.value.request_scope === 'category' ? Array.from(roleFormCategories.value) : [],
     }
     if (editingRoleId.value) {
       await rolesStore.updateRole(editingRoleId.value, payload)
@@ -457,10 +679,26 @@ async function removeRoleEntry(id: number) {
           <h3>{{ m.settings.serviceMgmtTitle }}</h3>
           <p class="services-subtitle">{{ m.settings.serviceMgmtSubtitle }}</p>
         </div>
-        <button v-if="!showServiceForm" type="button" class="submit-btn" @click="openAddServiceForm">
-          {{ m.settings.serviceAdd }}
-        </button>
+        <div class="gs-row-actions">
+          <button
+            type="button"
+            class="btn appeal-btn"
+            :disabled="departmentsRefreshing"
+            @click="refreshDepartments"
+          >
+            <span v-if="departmentsRefreshing" class="spinner-border spinner-border-sm" />
+            <span>{{ m.settings.refreshDepartments }}</span>
+          </button>
+          <button v-if="!showServiceForm" type="button" class="submit-btn" @click="openAddServiceForm">
+            {{ m.settings.serviceAdd }}
+          </button>
+        </div>
       </div>
+      <p v-if="departmentsRefreshed" class="form-success">
+        {{ m.settings.departmentsRefreshed }} ({{ staffStore.departments.length }})
+      </p>
+      <p v-if="departmentsRefreshError" class="form-error">{{ departmentsRefreshError }}</p>
+      <p class="field-hint">{{ m.settings.refreshDepartmentsHint }}</p>
 
       <form v-if="showServiceForm" class="appeal-form service-form" @submit.prevent="submitServiceForm">
         <h3>{{ editingServiceId ? m.settings.serviceEditTitle : m.settings.serviceAddTitle }}</h3>
@@ -508,9 +746,15 @@ async function removeRoleEntry(id: number) {
             <span class="select-wrap">
               <select v-model="serviceForm.department" class="field-input">
                 <option value="">{{ m.settings.serviceDepartmentPlaceholder }}</option>
-                <option v-for="dept in staffStore.departments" :key="dept.id" :value="dept.id">
-                  {{ dept.name_uz }}
-                </option>
+                <optgroup
+                  v-for="group in staffStore.departmentGroups"
+                  :key="group.label || 'other'"
+                  :label="group.label || m.staff.departmentOtherGroup"
+                >
+                  <option v-for="dept in group.items" :key="dept.id" :value="dept.id">
+                    {{ dept.name_uz }}
+                  </option>
+                </optgroup>
               </select>
               <svg class="select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9" /></svg>
             </span>
@@ -594,7 +838,8 @@ async function removeRoleEntry(id: number) {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="service in servicesStore.services" :key="service.id">
+            <template v-for="service in servicesStore.services" :key="service.id">
+            <tr>
               <td>{{ service.code }}</td>
               <td>{{ service.name_uz }}</td>
               <td>{{ service.category_display }}</td>
@@ -610,6 +855,17 @@ async function removeRoleEntry(id: number) {
                   </button>
                   <button
                     type="button"
+                    class="btn appeal-btn route-toggle-btn"
+                    :class="{ 'is-open': routesServiceId === service.id }"
+                    @click="toggleRoutes(service)"
+                  >
+                    {{ m.settings.routeBtn }}
+                    <span v-if="service.routing_rules.length" class="route-count">
+                      {{ service.routing_rules.length }}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
                     class="btn appeal-btn req-cancel-btn"
                     :disabled="deletingServiceId === service.id"
                     @click="removeServiceEntry(service.id)"
@@ -619,6 +875,166 @@ async function removeRoleEntry(id: number) {
                 </div>
               </td>
             </tr>
+
+            <!-- Yo'naltirish qoidalari paneli — faqat ochilgan xizmat uchun -->
+            <tr v-if="routesServiceId === service.id" class="route-panel-row">
+              <td colspan="9">
+                <div class="route-panel">
+                  <div class="route-panel-head">
+                    <h4>{{ m.settings.routeTitle }}</h4>
+                    <p class="services-subtitle">{{ m.settings.routeSubtitle }}</p>
+                  </div>
+
+                  <p v-if="routesLoading" class="appeal-empty">{{ m.settings.loadingList }}</p>
+                  <p v-else-if="routesError" class="form-error">{{ routesError }}</p>
+
+                  <template v-else>
+                    <div v-if="service.routing_rules.length" class="staff-table-wrap">
+                      <table class="staff-table">
+                        <thead>
+                          <tr>
+                            <th>{{ m.settings.routeColPriority }}</th>
+                            <th>{{ m.settings.routeColRole }}</th>
+                            <th>{{ m.settings.routeColDepartment }}</th>
+                            <th>{{ m.settings.routeColDispatch }}</th>
+                            <th>{{ m.settings.routeColStaff }}</th>
+                            <th>{{ m.settings.colActive }}</th>
+                            <th>{{ m.grant.colActions }}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <template v-for="route in service.routing_rules" :key="route.id">
+                          <tr>
+                            <td>{{ route.priority }}</td>
+                            <td>{{ route.role_name || route.role_code || route.role }}</td>
+                            <td>
+                              {{ routeDepartmentName(route, service) }}
+                              <span v-if="route.department == null" class="route-from-service">
+                                {{ m.settings.routeFromService }}
+                              </span>
+                            </td>
+                            <td>{{ dispatchModeLabel(route.dispatch_mode) }}</td>
+                            <td>
+                              <span
+                                class="route-staff-badge"
+                                :class="{ 'is-empty': route.eligible_staff_count === 0 }"
+                              >
+                                {{ route.eligible_staff_count ?? '—' }}
+                              </span>
+                            </td>
+                            <td>
+                              {{ route.is_active ? m.services.statusAvailable : m.services.statusUnavailable }}
+                            </td>
+                            <td>
+                              <div class="gs-row-actions">
+                                <button type="button" class="btn appeal-btn" @click="startEditRoute(route)">
+                                  {{ m.grant.editScore }}
+                                </button>
+                                <button
+                                  type="button"
+                                  class="btn appeal-btn req-cancel-btn"
+                                  :disabled="deletingRouteId === route.id"
+                                  @click="removeRoute(route.id)"
+                                >
+                                  {{ m.settings.systemSettingDelete }}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                          <!-- Xodim yo'q bo'lsa marshrut amalda ishlamaydi — admin buni
+                               hech qayerdan bilmasdi, shu sabab qator ostida aniq ogohlantirish. -->
+                          <tr v-if="route.eligible_staff_count === 0" class="route-warn-row">
+                            <td colspan="7" class="route-warn">{{ m.settings.routeNoStaffWarning }}</td>
+                          </tr>
+                          </template>
+                        </tbody>
+                      </table>
+                    </div>
+                    <p v-else class="contact-empty">{{ m.settings.routeEmpty }}</p>
+
+                    <form class="route-form" @submit.prevent="submitRouteForm">
+                      <h5>{{ editingRouteId ? m.settings.routeEditTitle : m.settings.routeAddTitle }}</h5>
+                      <div class="route-form-grid">
+                        <label class="field">
+                          <span class="field-label">{{ m.settings.routeColRole }} *</span>
+                          <span class="select-wrap">
+                            <select v-model="routeForm.role" class="field-input">
+                              <option value="">{{ m.settings.routeRolePlaceholder }}</option>
+                              <option v-for="role in rolesStore.roles" :key="role.id" :value="role.id">
+                                {{ role.name }}
+                              </option>
+                            </select>
+                            <svg class="select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9" /></svg>
+                          </span>
+                        </label>
+
+                        <label class="field">
+                          <span class="field-label">{{ m.settings.routeColDepartment }}</span>
+                          <span class="select-wrap">
+                            <select v-model="routeForm.department" class="field-input">
+                              <option value="">{{ m.settings.routeServiceDepartment }}</option>
+                              <optgroup
+                                v-for="group in staffStore.departmentGroups"
+                                :key="group.label || 'other'"
+                                :label="group.label || m.staff.departmentOtherGroup"
+                              >
+                                <option v-for="dept in group.items" :key="dept.id" :value="dept.id">
+                                  {{ dept.name_uz }}
+                                </option>
+                              </optgroup>
+                            </select>
+                            <svg class="select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9" /></svg>
+                          </span>
+                          <span class="field-hint">{{ m.settings.routeDepartmentHint }}</span>
+                        </label>
+
+                        <label class="field">
+                          <span class="field-label">{{ m.settings.routeColPriority }}</span>
+                          <input
+                            v-model.number="routeForm.priority"
+                            type="number"
+                            min="1"
+                            class="field-input"
+                            :placeholder="m.settings.routePriorityPlaceholder"
+                          />
+                          <span class="field-hint">{{ m.settings.routePriorityHint }}</span>
+                        </label>
+
+                        <label class="field">
+                          <span class="field-label">{{ m.settings.routeColDispatch }}</span>
+                          <span class="select-wrap">
+                            <select v-model="routeForm.dispatch_mode" class="field-input">
+                              <option v-for="mode in DISPATCH_OPTIONS" :key="mode" :value="mode">
+                                {{ dispatchModeLabel(mode) }}
+                              </option>
+                            </select>
+                            <svg class="select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9" /></svg>
+                          </span>
+                        </label>
+
+                        <label class="gs-checkbox-field">
+                          <input v-model="routeForm.is_active" type="checkbox" />
+                          {{ m.settings.serviceActive }}
+                        </label>
+                      </div>
+
+                      <div class="info-form-actions">
+                        <button type="submit" class="submit-btn" :disabled="routeSaving">
+                          <span v-if="routeSaving" class="spinner-border spinner-border-sm" />
+                          <span>{{ editingRouteId ? m.settings.serviceSave : m.settings.routeAdd }}</span>
+                        </button>
+                        <button v-if="editingRouteId" type="button" class="appeal-btn" @click="resetRouteForm">
+                          {{ m.settings.serviceCancel }}
+                        </button>
+                      </div>
+                      <p v-if="routeFormError" class="form-error">{{ routeFormError }}</p>
+                    </form>
+                  </template>
+                </div>
+              </td>
+            </tr>
+            </template>
+
             <tr v-if="!servicesStore.services.length">
               <td colspan="9" class="contact-empty">{{ m.settings.serviceEmpty }}</td>
             </tr>
@@ -670,6 +1086,38 @@ async function removeRoleEntry(id: number) {
           <span class="field-label">{{ m.settings.roleDescriptionLabel }}</span>
           <textarea v-model="roleForm.description" class="field-input service-textarea" rows="2" />
         </label>
+
+        <!-- Murojaatlarni ko'rish doirasi — majburiy tanlov. `none` ataylab
+             standart emas: u bilan xodim deyarli hech narsa ko'rmaydi. -->
+        <label class="field">
+          <span class="field-label">{{ m.settings.roleScopeLabel }} *</span>
+          <span class="select-wrap">
+            <select v-model="roleForm.request_scope" class="field-input">
+              <option v-for="scope in REQUEST_SCOPES" :key="scope" :value="scope">
+                {{ roleScopeLabel(scope) }}
+              </option>
+            </select>
+            <svg class="select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9" /></svg>
+          </span>
+          <small class="field-hint">{{ m.settings.roleScopeHint }}</small>
+          <small v-if="roleForm.request_scope === 'none'" class="form-error">
+            {{ m.settings.roleScopeNoneWarning }}
+          </small>
+        </label>
+
+        <div v-if="roleForm.request_scope === 'category'" class="field">
+          <span class="field-label">{{ m.settings.roleCategoriesLabel }} *</span>
+          <div class="service-checkbox-row">
+            <label v-for="category in REQUEST_CATEGORIES" :key="category" class="gs-checkbox-field">
+              <input
+                type="checkbox"
+                :checked="roleFormCategories.has(category)"
+                @change="toggleRoleCategory(category)"
+              />
+              {{ serviceCategoryLabel(category) }}
+            </label>
+          </div>
+        </div>
 
         <div class="field">
           <span class="field-label">{{ m.settings.rolePermissionsLabel }}</span>

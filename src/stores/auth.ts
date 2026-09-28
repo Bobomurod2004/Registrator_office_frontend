@@ -12,6 +12,14 @@ export interface UserSession {
   role: string
   roleId: number | null
   roleCode: BackendRole | null
+  /** Barcha faol assignmentlardan olingan rol kodlari. `roleCode` esa eski
+   * endpointlar uchun primary rol bo'lib qoladi. */
+  roleCodes: string[]
+  permissionCodes: string[]
+  /** Backend qaytargan active assignmentlar; sessiyani yangilagandan keyin
+   * navigatsiya bitta primary rolga bog'lanib qolmasligi uchun saqlanadi. */
+  roleAssignments: UserRoleAssignment[]
+  isSuperAdmin: boolean
   kind: AccountKind
   method: AuthMethod | 'demo'
   accessToken: string
@@ -27,15 +35,28 @@ export interface UserSession {
  * `role_code` maydonining o'zi bu turdan kengroq (string) — bu yerdagi
  * qiymatlar faqat taqqoslash uchun ishlatiladigan ma'lum kodlar.
  */
-export type BackendRole =
-  | 'student'
-  | 'operator'
-  | 'dekanat'
-  | 'accountant'
-  | 'science'
-  | 'international'
-  | 'department_admin'
-  | 'super_admin'
+export type BackendRole = string
+
+/** `role_assignments` serializeri eski/yangi backend versiyalarida role'ni
+ * ID yoki ichma-ich obyekt ko'rinishida qaytarishi mumkin. Shu ikki shaklni
+ * bir tipda qabul qilamiz; amalda muhim maydonlar pastdagi normalizatsiyada
+ * barqaror shaklga o'tkaziladi. */
+export interface UserRoleAssignment {
+  id: number
+  role: number
+  role_code: string
+  role_display: string
+  permissions: string[]
+  department: number | null
+  department_name: string
+  request_scope: 'none' | 'department' | 'category' | 'all'
+  request_categories: string[]
+  starts_at: string | null
+  expires_at: string | null
+  note: string
+  is_primary: boolean
+  is_active: boolean
+}
 
 /**
  * Backenddagi RoleEnum (api/v1/auth/login/ va /auth/me/ shu formatda qaytaradi).
@@ -50,6 +71,9 @@ export interface BackendUser {
   role: number
   role_code: BackendRole
   role_display: string
+  role_assignments?: unknown[]
+  is_super_admin?: boolean
+  is_student?: boolean
 }
 
 /** GET/PATCH /api/v1/auth/me/ to'liq javob shakli. */
@@ -85,8 +109,64 @@ const HEMIS_ENDPOINTS: Record<HemisMethod, { redirect: string; callback: string 
  * qiymat). HEMIS "Talaba" OAuth endpointi orqali kirish — bu sof talaba ekanining
  * eng ishonchli belgisi, shu sabab u `role`dan ustuvor olinadi.
  */
-function resolveKind(roleCode: BackendRole, method: AuthMethod): AccountKind {
-  return method === 'student' || roleCode === 'student' ? 'student' : 'staff'
+function resolveKind(user: BackendUser, method: AuthMethod): AccountKind {
+  return method === 'student' || user.is_student === true || user.role_code === 'student' ? 'student' : 'staff'
+}
+
+function normalizeRoleAssignment(raw: any): UserRoleAssignment | null {
+  if (!raw || typeof raw !== 'object') return null
+  const role = raw.role
+  const nestedRole = role && typeof role === 'object' ? role : null
+  const id = Number(raw.id)
+  const roleId = Number(nestedRole?.id ?? role ?? raw.role_id)
+  if (!Number.isFinite(id) || !Number.isFinite(roleId)) return null
+  const department = raw.department && typeof raw.department === 'object' ? raw.department.id : raw.department
+  const categories = raw.request_categories ?? raw.categories ?? []
+  return {
+    id,
+    role: roleId,
+    role_code: String(raw.role_code ?? nestedRole?.code ?? ''),
+    role_display: String(raw.role_display ?? raw.role_name ?? nestedRole?.name ?? nestedRole?.display ?? ''),
+    permissions: Array.isArray(raw.permissions ?? nestedRole?.permissions)
+      ? (raw.permissions ?? nestedRole?.permissions).map((permission: any) =>
+          typeof permission === 'string' ? permission : String(permission?.code ?? permission?.codename ?? ''),
+        ).filter(Boolean)
+      : [],
+    department: department == null || department === '' ? null : Number(department),
+    department_name: String(raw.department_name ?? raw.department_display ?? raw.department?.name_uz ?? ''),
+    request_scope: raw.request_scope ?? 'none',
+    request_categories: Array.isArray(categories) ? categories.map(String) : [],
+    starts_at: raw.starts_at ?? null,
+    expires_at: raw.expires_at ?? null,
+    note: String(raw.note ?? ''),
+    is_primary: Boolean(raw.is_primary),
+    is_active: raw.is_active == null ? true : Boolean(raw.is_active),
+  }
+}
+
+function activeAssignments(user: BackendUser): UserRoleAssignment[] {
+  const assignments = Array.isArray(user.role_assignments)
+    ? user.role_assignments.map(normalizeRoleAssignment).filter((value): value is UserRoleAssignment => value !== null)
+    : []
+  if (assignments.length) return assignments.filter((assignment) => assignment.is_active)
+  // Login va eski backend javoblari `role_assignments` qaytarmasa ham mavjud
+  // primary rol ishlashda davom etadi.
+  return [{
+    id: 0,
+    role: user.role,
+    role_code: user.role_code ?? '',
+    role_display: user.role_display ?? '',
+    permissions: [],
+    department: null,
+    department_name: '',
+    request_scope: 'none',
+    request_categories: [],
+    starts_at: null,
+    expires_at: null,
+    note: '',
+    is_primary: true,
+    is_active: true,
+  }]
 }
 
 function toSession(
@@ -95,13 +175,20 @@ function toSession(
   refreshToken: string,
   method: AuthMethod = 'staff',
 ): UserSession {
+  const roleAssignments = activeAssignments(user)
+  const roleCodes = [...new Set(roleAssignments.map((assignment) => assignment.role_code).filter(Boolean))]
+  const permissionCodes = [...new Set(roleAssignments.flatMap((assignment) => assignment.permissions))]
   return {
     id: String(user.id),
     name: user.full_name || user.hemis_id,
     role: user.role_display,
     roleId: user.role,
     roleCode: user.role_code,
-    kind: resolveKind(user.role_code, method),
+    roleCodes,
+    permissionCodes,
+    roleAssignments,
+    isSuperAdmin: user.is_super_admin === true || roleCodes.includes('super_admin'),
+    kind: resolveKind(user, method),
     method,
     accessToken,
     refreshToken,
@@ -116,7 +203,28 @@ function extractRedirectUrl(data: any): string | null {
 function loadSession(): UserSession | null {
   try {
     const raw = localStorage.getItem(SESSION_KEY)
-    return raw ? (JSON.parse(raw) as UserSession) : null
+    if (!raw) return null
+    const saved = JSON.parse(raw) as Partial<UserSession>
+    if (!saved.id || !saved.accessToken) return null
+    // Old localStorage sessiyalarida yangi ko'p-rolli maydonlar bo'lmaydi.
+    // Birinchi `/me/` so'rovi ularni to'liq yangilaydi; ungacha primary rol
+    // bilan xavfsiz fallback ishlaydi.
+    const roleCode = saved.roleCode ?? null
+    return {
+      ...saved,
+      id: saved.id,
+      name: saved.name ?? '',
+      role: saved.role ?? '',
+      roleId: saved.roleId ?? null,
+      roleCode,
+      roleCodes: saved.roleCodes?.length ? saved.roleCodes : (roleCode ? [roleCode] : []),
+      permissionCodes: saved.permissionCodes ?? [],
+      roleAssignments: saved.roleAssignments ?? [],
+      isSuperAdmin: saved.isSuperAdmin ?? roleCode === 'super_admin',
+      kind: saved.kind ?? 'staff',
+      method: saved.method ?? 'staff',
+      accessToken: saved.accessToken,
+    }
   } catch {
     return null
   }
@@ -131,10 +239,29 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isAuthenticated = computed(() => session.value !== null)
   const isStaff = computed(() => session.value?.kind === 'staff')
-  const isAdmin = computed(
-    () => session.value?.roleCode === 'department_admin' || session.value?.roleCode === 'super_admin',
+  const isSuperAdmin = computed(() => Boolean(session.value?.isSuperAdmin))
+  /**
+   * Ekranlarni ROL NOMIGA emas, RUXSATGA qarab boshqarish kerak (backend
+   * jamoasining ko'rsatmasi) — ruxsatlar katalogi:
+   * GET /api/v1/auth/roles/permission-catalog/.
+   * SuperAdmin har doim `true` — uning vakolatlari alohida ro'yxat bilan
+   * cheklanmaydi.
+   */
+  function can(permission: string): boolean {
+    if (isSuperAdmin.value) return true
+    return session.value?.permissionCodes.includes(permission) === true
+  }
+
+  const canManageUsers = computed(() =>
+    can('manage_users') ||
+    session.value?.roleCodes.includes('department_admin') === true,
   )
-  const isSuperAdmin = computed(() => session.value?.roleCode === 'super_admin')
+  /** `dispatch_requests` — murojaatni rollar bo'yicha taqsimlash/yo'naltirish
+   * (`POST /requests/<id>/route/`). Backendda yangi qo'shilgan ruxsat. */
+  const canDispatchRequests = computed(() => can('dispatch_requests'))
+  const isAdmin = computed(() =>
+    canManageUsers.value,
+  )
   const homePath = computed(() => (isStaff.value ? '/statistics' : '/services'))
 
   function persist(value: UserSession | null) {
@@ -152,8 +279,25 @@ export const useAuthStore = defineStore('auth', () => {
       role: user.role_display,
       roleId: user.role,
       roleCode: user.role_code,
-      kind: resolveKind(user.role_code, session.value.method === 'demo' ? 'staff' : session.value.method),
+      roleCodes: activeAssignments(user).map((assignment) => assignment.role_code).filter(Boolean),
+      permissionCodes: activeAssignments(user).flatMap((assignment) => assignment.permissions),
+      roleAssignments: activeAssignments(user),
+      isSuperAdmin: user.is_super_admin === true || activeAssignments(user).some((assignment) => assignment.role_code === 'super_admin'),
+      kind: resolveKind(user, session.value.method === 'demo' ? 'staff' : session.value.method),
     })
+  }
+
+  /** `/me/` dan barcha faol assignmentlarni qayta olib, sahifa/ruxsat
+   * ko'rinishlarini serverdagi haqiqiy holat bilan sinxronlaydi. Role
+   * o'zgartirilgan yoki muddat tugagan sessiyalar aynan shu orqali yangilanadi. */
+  async function refreshSessionContext(): Promise<void> {
+    if (!session.value) return
+    try {
+      const { data } = await http.get<BackendUser>('/api/v1/auth/me/')
+      syncProfile(data)
+    } catch {
+      // Token yangilanishi yoki vaqtinchalik tarmoq xatosi loginni buzmasin.
+    }
   }
 
   /** GET /api/v1/auth/profile/ — hemis_id/full_name/phone/email/image/role/gender/bo'lim.
@@ -320,12 +464,16 @@ export const useAuthStore = defineStore('auth', () => {
     isStaff,
     isAdmin,
     isSuperAdmin,
+    can,
+    canManageUsers,
+    canDispatchRequests,
     homePath,
     loginWithPassword,
     beginLogin,
     handleCallback,
     logout,
     syncProfile,
+    refreshSessionContext,
     fetchProfileImage,
     deleteProfileImage,
     syncFromHemis,

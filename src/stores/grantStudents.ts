@@ -80,6 +80,61 @@ export interface HemisSyncTotals {
   skipped: number
   errors: number
   deactivated: number
+  /** HEMIS'dagi fakulteti bizning bazada topilmagani uchun o'tkazib yuborilganlar. */
+  facultyMissing: number
+}
+
+function emptySyncTotals(): HemisSyncTotals {
+  return { created: 0, updated: 0, skipped: 0, errors: 0, deactivated: 0, facultyMissing: 0 }
+}
+
+/** `faculty_missing` — backend javob tanasi Swagger'da hujjatlashtirilmagan, shu sabab
+ * bir nechta ehtimoliy ko'rinish qabul qilinadi: son (`12`), nomlar massivi,
+ * `[{name, count}]` yoki `{"Fakultet nomi": 12}` xaritasi. Fakultet nomlari kelsa —
+ * admin qaysi fakultetni yaratish/sinxronlash kerakligini bilishi uchun saqlanadi. */
+function normalizeFacultyMissing(raw: unknown): { count: number; names: string[] } {
+  if (raw == null) return { count: 0, names: [] }
+  if (typeof raw === 'number') return { count: Number.isFinite(raw) ? raw : 0, names: [] }
+  if (typeof raw === 'string') return { count: 1, names: [raw] }
+
+  if (Array.isArray(raw)) {
+    let count = 0
+    const names: string[] = []
+    for (const item of raw) {
+      if (typeof item === 'string') {
+        names.push(item)
+        count += 1
+        continue
+      }
+      const o = (item ?? {}) as Record<string, unknown>
+      const name = o.name ?? o.faculty ?? o.faculty_name ?? o.label
+      if (typeof name === 'string' && name) names.push(name)
+      const c = Number(o.count ?? o.soni)
+      count += Number.isFinite(c) && c > 0 ? c : 1
+    }
+    return { count, names }
+  }
+
+  if (typeof raw === 'object') {
+    const o = raw as Record<string, unknown>
+    const nested = o.faculties ?? o.names ?? o.items ?? o.list
+    const explicit = Number(o.count ?? o.soni ?? o.total)
+    if (nested !== undefined || Number.isFinite(explicit)) {
+      const inner = normalizeFacultyMissing(nested)
+      return { count: Number.isFinite(explicit) ? explicit : inner.count, names: inner.names }
+    }
+    // {"Fakultet nomi": 12} xaritasi
+    let count = 0
+    const names: string[] = []
+    for (const [key, value] of Object.entries(o)) {
+      names.push(key)
+      const c = Number(value)
+      count += Number.isFinite(c) && c > 0 ? c : 1
+    }
+    return { count, names }
+  }
+
+  return { count: 0, names: [] }
 }
 
 export interface Faculty {
@@ -203,7 +258,9 @@ export const useGrantStudentsStore = defineStore('grantStudents', () => {
   const syncPage = ref(0)
   const syncTotalPages = ref(0)
   const syncTotalCount = ref(0)
-  const syncTotals = ref<HemisSyncTotals>({ created: 0, updated: 0, skipped: 0, errors: 0, deactivated: 0 })
+  const syncTotals = ref<HemisSyncTotals>(emptySyncTotals())
+  /** Backend fakultet nomlarini qaytargan bo'lsa — takrorlanmasdan yig'iladi. */
+  const syncFacultyMissingNames = ref<string[]>([])
   const syncFailedPage = ref<number | null>(null)
   const syncStopRequested = ref(false)
 
@@ -226,7 +283,10 @@ export const useGrantStudentsStore = defineStore('grantStudents', () => {
     syncing.value = true
     syncStopRequested.value = false
     syncFailedPage.value = null
-    if (startPage === 1) syncTotals.value = { created: 0, updated: 0, skipped: 0, errors: 0, deactivated: 0 }
+    if (startPage === 1) {
+      syncTotals.value = emptySyncTotals()
+      syncFacultyMissingNames.value = []
+    }
 
     let currentPage = startPage
     let hasMore = true
@@ -247,12 +307,17 @@ export const useGrantStudentsStore = defineStore('grantStudents', () => {
           throw new Error(`${currentPage}-sahifada xato: ${r.error}`)
         }
 
+        const missing = normalizeFacultyMissing(r.faculty_missing)
         syncTotals.value = {
           created: syncTotals.value.created + (r.created ?? 0),
           updated: syncTotals.value.updated + (r.updated ?? 0),
           skipped: syncTotals.value.skipped + (r.skipped ?? 0),
           errors: syncTotals.value.errors + (r.errors ?? 0),
           deactivated: syncTotals.value.deactivated + (r.deactivated ?? 0),
+          facultyMissing: syncTotals.value.facultyMissing + missing.count,
+        }
+        if (missing.names.length) {
+          syncFacultyMissingNames.value = [...new Set([...syncFacultyMissingNames.value, ...missing.names])]
         }
         syncPage.value = currentPage
         syncTotalPages.value = r.total_pages ?? currentPage
@@ -289,6 +354,7 @@ export const useGrantStudentsStore = defineStore('grantStudents', () => {
     syncTotalPages,
     syncTotalCount,
     syncTotals,
+    syncFacultyMissingNames,
     syncFailedPage,
     syncStopRequested,
     syncFromHemis,

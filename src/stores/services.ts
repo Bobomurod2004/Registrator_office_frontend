@@ -9,6 +9,49 @@ export type ServiceCategory = 'reference' | 'financial' | 'academic' | 'science'
 export type FileFormat = 'pdf' | 'excel' | 'pdf_excel'
 export type SlaUnit = 'hours' | 'days'
 export type ServiceLang = 'uz' | 'uz_cyrl' | 'ru' | 'en'
+export type DispatchMode = 'auto_balanced' | 'manual_review'
+
+export interface ServiceRoleRoute {
+  id: number
+  service: number
+  role: number
+  role_name: string
+  role_code: string
+  /**
+   * ATAYLAB almashtirish (override). Avval seed migratsiyasi har bir marshrutga
+   * xizmat bo'limining NUSXASINI yozib qo'ygan va o'sha nusxa ustun kelardi —
+   * shu sabab xizmat formasidan bo'limni o'zgartirish marshrutga ta'sir
+   * qilmasdi. Endi:
+   *   `null`      → murojaat XIZMATNING bo'limiga tushadi (odatdagi holat);
+   *   to'ldirilgan → ataylab BOSHQA bo'limga yo'naltirish.
+   */
+  department: number | null
+  department_name: string | null
+  /** Murojaat haqiqatda tushadigan bo'lim (override bo'lmasa — xizmatning bo'limi). */
+  effective_department: number | null
+  effective_department_name: string | null
+  /**
+   * Shu bo'limda shu roldagi faol xodimlar soni. `0` bo'lsa marshrut amalda
+   * ishlamaydi: murojaat yaratiladi va to'g'ri bo'limga tushadi, lekin hech
+   * kimga tayinlanmasdan rol navbatida jim turib qoladi.
+   * `null` — backend bu maydonni qaytarmadi (noma'lum), ogohlantirish
+   * ko'rsatilmaydi (aks holda eski deploymentda soxta ogohlantirish chiqardi).
+   */
+  eligible_staff_count: number | null
+  priority: number
+  dispatch_mode: DispatchMode
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ServiceRoleRoutePayload {
+  role: number
+  department?: number | null
+  priority?: number
+  dispatch_mode: DispatchMode
+  is_active?: boolean
+}
 
 export interface Service {
   id: number
@@ -34,6 +77,34 @@ export interface Service {
   payment_amount: string | null
   is_active: boolean
   order: number
+  routing_rules: ServiceRoleRoute[]
+}
+
+/** Maydon umuman kelmasa `null` (noma'lum), kelsa — xavfsiz son. */
+function toCountOrNull(value: unknown): number | null {
+  if (value == null || value === '') return null
+  const count = Number(value)
+  return Number.isFinite(count) ? count : null
+}
+
+function normalizeRoute(raw: any): ServiceRoleRoute {
+  return {
+    id: Number(raw.id),
+    service: Number(raw.service),
+    role: Number(raw.role),
+    role_name: raw.role_name ?? '',
+    role_code: raw.role_code ?? '',
+    department: raw.department == null ? null : Number(raw.department),
+    department_name: raw.department_name ?? null,
+    effective_department: raw.effective_department == null ? null : Number(raw.effective_department),
+    effective_department_name: raw.effective_department_name ?? null,
+    eligible_staff_count: toCountOrNull(raw.eligible_staff_count),
+    priority: Number(raw.priority ?? 1),
+    dispatch_mode: raw.dispatch_mode === 'manual_review' ? 'manual_review' : 'auto_balanced',
+    is_active: raw.is_active == null ? true : Boolean(raw.is_active),
+    created_at: raw.created_at ?? '',
+    updated_at: raw.updated_at ?? '',
+  }
 }
 
 export interface ServicePayload {
@@ -82,6 +153,7 @@ function normalize(raw: any): Service {
     payment_amount: raw.payment_amount ?? null,
     is_active: !!raw.is_active,
     order: raw.order ?? 0,
+    routing_rules: Array.isArray(raw.routing_rules) ? raw.routing_rules.map(normalizeRoute) : [],
   }
 }
 
@@ -127,5 +199,42 @@ export const useServicesStore = defineStore('services', () => {
     services.value = services.value.filter((s) => s.id !== id)
   }
 
-  return { services, loading, error, fetchServices, addService, updateService, removeService }
+  async function fetchServiceRoutes(serviceId: number): Promise<ServiceRoleRoute[]> {
+    const { data } = await http.get(`/api/v1/services/${serviceId}/routes/`, { params: { page_size: 100 } })
+    const routes = (data?.results ?? data ?? []).map(normalizeRoute)
+    const service = services.value.find((item) => item.id === serviceId)
+    if (service) service.routing_rules = routes
+    return routes
+  }
+
+  async function addServiceRoute(serviceId: number, payload: ServiceRoleRoutePayload) {
+    const { data } = await http.post(`/api/v1/services/${serviceId}/routes/`, payload)
+    const route = normalizeRoute(data)
+    const service = services.value.find((item) => item.id === serviceId)
+    if (service) service.routing_rules = [...service.routing_rules, route].sort((a, b) => a.priority - b.priority)
+    return route
+  }
+
+  async function updateServiceRoute(serviceId: number, routeId: number, payload: Partial<ServiceRoleRoutePayload>) {
+    const { data } = await http.patch(`/api/v1/services/${serviceId}/routes/${routeId}/`, payload)
+    const route = normalizeRoute(data)
+    const service = services.value.find((item) => item.id === serviceId)
+    if (service) {
+      const index = service.routing_rules.findIndex((item) => item.id === routeId)
+      if (index !== -1) service.routing_rules[index] = route
+      service.routing_rules.sort((a, b) => a.priority - b.priority)
+    }
+    return route
+  }
+
+  async function removeServiceRoute(serviceId: number, routeId: number) {
+    await http.delete(`/api/v1/services/${serviceId}/routes/${routeId}/`)
+    const service = services.value.find((item) => item.id === serviceId)
+    if (service) service.routing_rules = service.routing_rules.filter((route) => route.id !== routeId)
+  }
+
+  return {
+    services, loading, error, fetchServices, addService, updateService, removeService,
+    fetchServiceRoutes, addServiceRoute, updateServiceRoute, removeServiceRoute,
+  }
 })

@@ -8,6 +8,24 @@ export interface PermissionItem {
   category: string
 }
 
+/**
+ * Bu rol bilan xodim MUROJAATLARNING QAYSI QISMINI KO'RADI:
+ *  - `all`        — barcha murojaatlar
+ *  - `category`   — faqat tanlangan kategoriyalar
+ *  - `department` — faqat o'z bo'limi
+ *  - `none`       — deyarli hech narsa
+ * DIQQAT: `none` — xavfsiz standart EMAS. Backend jamoasi aniq ogohlantirdi:
+ * yangi rolga `none` qo'yilsa, xodim tizimda deyarli hech narsa ko'rmaydi.
+ * Shu sabab forma bu maydonni majburiy tanlov qiladi va standart qiymat
+ * sifatida `department` taklif etiladi.
+ */
+export type RequestScope = 'none' | 'department' | 'category' | 'all'
+
+export const REQUEST_SCOPES: RequestScope[] = ['all', 'category', 'department', 'none']
+
+/** `request_scope: 'category'` bo'lganda tanlanadigan xizmat kategoriyalari. */
+export const REQUEST_CATEGORIES = ['reference', 'financial', 'academic', 'science'] as const
+
 export interface Role {
   id: number
   name: string
@@ -16,6 +34,14 @@ export interface Role {
   permissions: string[]
   isSystem: boolean
   usersCount: number
+  /** Faol emas bo'lsa, xodim qo'shish/rol tahrirlash ro'yxatida ko'rsatilmaydi. */
+  isActive: boolean
+  /** `true` bo'lsa, bu rol bilan xodim qo'shishda bo'lim tanlash majburiy. */
+  requiresDepartment: boolean
+  /** Login+parol bilan kirish. `null` — backend bu maydonni qaytarmagan (noma'lum). */
+  allowsLocalLogin: boolean | null
+  requestScope: RequestScope
+  requestCategories: string[]
 }
 
 export interface RolePayload {
@@ -23,12 +49,15 @@ export interface RolePayload {
   code?: string
   description?: string
   permissions: string[]
+  request_scope: RequestScope
+  request_categories?: string[]
 }
 
-/** Rol obyektining aniq maydon nomlari Swagger'da hujjatlashtirilmagan
- * ("No response body"), shu sabab bir nechta ehtimoliy nom moslashuvchan
- * tarzda o'qiladi — xuddi shu loyihadagi boshqa hujjatlanmagan endpointlar
- * (masalan statistics.ts) uchun qo'llanilgan naqsh. */
+/** `Role` sxemasi (api/schema/ orqali tasdiqlangan): id, code, name, is_system,
+ * is_active, request_scope, request_categories, is_department_head,
+ * requires_department, allows_local_login, session_hours, permissions,
+ * assignable_roles, user_count. `description` sxemada yo'q — eski nomlar
+ * zaxira sifatida qoldirilgan. */
 function normalizeRole(raw: any): Role {
   const permsRaw = raw.permissions ?? raw.permission_codes ?? []
   return {
@@ -40,7 +69,19 @@ function normalizeRole(raw: any): Role {
       ? permsRaw.map((p: any) => (typeof p === 'string' ? p : p?.code ?? p?.codename ?? String(p?.id ?? '')))
       : [],
     isSystem: !!(raw.is_system ?? raw.is_default ?? raw.system ?? false),
-    usersCount: raw.users_count ?? raw.user_count ?? raw.members_count ?? 0,
+    usersCount: raw.user_count ?? raw.users_count ?? raw.members_count ?? 0,
+    isActive: raw.is_active == null ? true : !!raw.is_active,
+    requiresDepartment: !!raw.requires_department,
+    // DIQQAT: `== null` (`=== undefined` emas). Backend endi bog'langan qiymat
+    // bo'lmasa ham kalitni javobdan tushirib qoldirmaydi — `null` qiymat bilan
+    // yuboradi. `=== undefined` bo'lganda `null` "ruxsat yo'q" deb o'qilib,
+    // department_admin/super_admin uchun parol maydoni noto'g'ri yashirilardi.
+    // `null` — "noma'lum", ya'ni rol kodiga qarab aniqlanadi.
+    allowsLocalLogin: raw.allows_local_login == null ? null : !!raw.allows_local_login,
+    requestScope: (REQUEST_SCOPES as string[]).includes(raw.request_scope)
+      ? (raw.request_scope as RequestScope)
+      : 'department',
+    requestCategories: Array.isArray(raw.request_categories) ? raw.request_categories.map(String) : [],
   }
 }
 
@@ -81,19 +122,24 @@ export const useRolesStore = defineStore('roles', () => {
   const catalogLoading = ref(false)
   const catalogError = ref('')
 
+  /** Sahifalar `page` raqami bo'yicha so'raladi — javobdagi `next` mutlaq URL
+   * (masalan Docker ichidagi boshqa host) bo'lgani uchun unga ergashish
+   * ishlamay qolishi mumkin edi. Endpoint `page_size`ni qo'llab-quvvatlamaydi
+   * (sxemada faqat `ordering`/`page`/`search`), shu sabab rollar bir necha
+   * sahifada kelishi mumkin. */
   async function fetchRoles() {
     loading.value = true
     error.value = ''
     try {
       const all: Role[] = []
-      let url: string | null = '/api/v1/auth/roles/'
-      let params: Record<string, unknown> | undefined = { page_size: 100 }
-      while (url) {
-        const { data }: { data: any } = await http.get(url, { params })
+      let page = 1
+      let hasNext = true
+      while (hasNext && page <= 20) {
+        const { data }: { data: any } = await http.get('/api/v1/auth/roles/', { params: { page } })
         const results = data?.results ?? data
         all.push(...(Array.isArray(results) ? results : []).map(normalizeRole))
-        url = data?.next ?? null
-        params = undefined
+        hasNext = Boolean(data?.next)
+        page++
       }
       roles.value = all
     } catch {

@@ -8,7 +8,10 @@ const authStore = useAuthStore()
 watch(
   () => authStore.isAuthenticated,
   (isAuthenticated) => {
-    if (isAuthenticated) authStore.fetchProfileImage()
+    if (isAuthenticated) {
+      authStore.fetchProfileImage()
+      authStore.refreshSessionContext()
+    }
   },
   { immediate: true },
 )
