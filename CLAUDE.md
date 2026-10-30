@@ -1405,5 +1405,31 @@ Foydalanuvchi aniqlashtirdi: bu yorliqda **rol emas, bo'lim** ko'rsatilishi kera
 
 ---
 
+## 2026-10-30
+
+### 71. Yangi "Korrupsiyaga qarshi kurashish" sahifasi (barcha rollar uchun, statik)
+Foydalanuvchi: universitetning rasmiy saytidagi https://uzswlu.uz/korrupsiyaga-qarshi-kurashish sahifasidagi ma'lumotlar (rasmlar, telefon raqamlari va boshqalar) frontda statik qo'shilsin, backend kerak emas, hamma rollar ko'ra olsin. Avval Plan Mode orqali reja tuzilib tasdiqlandi.
+
+**Manba brauzer (built-in) orqali o'qildi:** ishonch telefoni +99871 230 13 73 (ichki 1061–1064), ishchi tel +99871 230 13 42, Telegram `t.me/uzdjtu_antikorrupsiya`, "Komplayens nazorat" bo'limining 2 ta xodimi (Hoshimov B.R. — bo'lim boshlig'i, Axmatov J.E. — bosh mutaxassis) va rasmlari, bo'limning 19 ta vazifasi, 9 ta me'yoriy hujjat (PDF havolalari).
+
+**Qarorlar:**
+- Rasmlar (2 xodim + universitet logotipi) saytdan yuklab `public/anticorruption/` ga qo'yildi (tashqi saytga bog'liq bo'lmaslik uchun). Saytdagi "Buyruqlar" va "Manfaatlar to'qnashuvi" kartalarining rasmlari baytma-bayt bir xil (bir xil logotip) bo'lgani uchun bitta fayl (`logo.png`) qoldirildi.
+- **Foydalanuvchi talabi bilan soddalashtirildi:** me'yoriy hujjatlar (yuklab olish) bo'limi, "manba" havolasi, bo'lim nomi qatori va vazifalar kirish matni olib tashlandi; har bir raqam/havola sahifada bir marta ko'rinadi. Pastdagi alohida "Bog'lanish" bo'limi ham olib tashlandi: ishchi telefon (yashil "qo'ng'iroq" tugmasi) va Telegram (ko'k tugma) endi eng tepada, ishonch telefoni bannerining o'ng tomonida katta tugma sifatida turadi (mobilda to'liq kenglikda ustma-ust). Sahifada endi: bannerdagi aloqa → xodimlar → vazifalar.
+- Rasmiy matnning aniq imlo xatolari ("muvfiqlashtiradi", "xaqida", "universiyet") tuzatib ko'chirildi; boshqa matn o'zgartirilmadi.
+- Kontent (vazifalar, hujjat nomlari, ismlar) o'zbek tilida qoladi; ru/en/kirill da faqat interfeys sarlavhalari tarjima qilinadi (rasmiy huquqiy matn o'zimcha tarjima qilinmadi). Kirill interfeys avtomatik transliteratsiya orqali keladi.
+
+**O'zgartirilgan/yaratilgan fayllar:**
+- [`src/data/antiCorruption.ts`](src/data/antiCorruption.ts) — **yangi**, barcha statik ma'lumot.
+- [`src/views/anti-corruption.vue`](src/views/anti-corruption.vue) — **yangi**: ishonch telefoni banneri (bosiladigan `tel:`, ichki raqamlar), xodimlar kartalari (rasm yuklanmasa bosh harfli avatar), vazifalar, bog'lanish (telefonlar + Telegram), hujjatlar, manba havolasi.
+- [`src/router/index.ts`](src/router/index.ts) — `/anti-corruption` (faqat `requiresAuth` — talaba ham, xodim ham, admin ham).
+- [`src/components/DashboardLayout.vue`](src/components/DashboardLayout.vue) — ikkala menyu ro'yxatiga (talaba va xodim) yangi band + `anticorruption` ikonkasi.
+- [`src/i18n/messages.ts`](src/i18n/messages.ts) — uz/ru/en `menu.antiCorruption` va `antiCorruption.*`.
+- [`src/style.css`](src/style.css) — `.ac-*` klasslar (`--dash-*` tokenlar, yorug'/qorong'i tema avtomatik).
+- `public/anticorruption/` — `hoshimov.jpg`, `axmatov.jpg`, `logo.png`.
+
+**Sinov:** `npm run build` xatosiz o'tdi. Dev-server'da (sinov uchun `localStorage`ga soxta, haqiqiy tokenga ega bo'lmagan sessiya qo'yib; keyin o'chirildi) **talaba** va **xodim** rollarida sahifa ochilishi, menyuda band chiqishi va aktiv bo'lishi, 3 ta rasm ham yuklanishi, 19 vazifa va 9 hujjat chiqishi, `tel:`/Telegram havolalari to'g'riligi, qorong'i va yorug' temada ko'rinishi va 375px mobil ko'rinishda gorizontal siljish yo'qligi tasdiqlandi. Konsoldagi yagona xatolar backend (`localhost:8000`) ishlamayotgani sababli `ERR_CONNECTION_REFUSED` (bu sahifaga aloqasi yo'q). Department admin/SuperAdmin rollari alohida sinalmadi — route'da cheklov yo'q, menyu esa xodim ro'yxatiga qo'shilgan.
+
+---
+
 ## Qoida
 Bundan keyingi har bir o'zgarishda ushbu faylga yangi sana ostida: nima qilingani, sababi va o'zgartirilgan fayllar ro'yxati qo'shiladi.

@@ -13,6 +13,7 @@ type IconName =
   | 'grant'
   | 'contacts'
   | 'audit'
+  | 'anticorruption'
 
 interface MenuLink {
   to: string
@@ -42,6 +43,7 @@ const menuLinks = computed<MenuLink[]>(() =>
         { to: '/grant', label: m.value.menu.grant, icon: 'grant' },
         { to: '/info', label: m.value.menu.info, icon: 'info' },
         { to: '/contacts', label: m.value.menu.contacts, icon: 'contacts' },
+        { to: '/anti-corruption', label: m.value.menu.antiCorruption, icon: 'anticorruption' },
         ...(authStore.isSuperAdmin
           ? [{ to: '/audit-log', label: m.value.menu.auditLog, icon: 'audit' as IconName }]
           : []),
@@ -51,6 +53,7 @@ const menuLinks = computed<MenuLink[]>(() =>
         { to: '/appeals', label: m.value.menu.myAppeals, icon: 'appeals' },
         { to: '/info', label: m.value.menu.info, icon: 'info' },
         { to: '/contacts', label: m.value.menu.contacts, icon: 'contacts' },
+        { to: '/anti-corruption', label: m.value.menu.antiCorruption, icon: 'anticorruption' },
       ],
 )
 
@@ -124,6 +127,11 @@ onMounted(closeMobileMenu)
                 <svg v-else-if="link.icon === 'audit'" viewBox="0 0 24 24" role="presentation">
                   <path
                     d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Zm-1.2 13.2L7 11.4l1.4-1.4 2.4 2.4 4.8-4.8L17 9l-6.2 6.2Z"
+                  />
+                </svg>
+                <svg v-else-if="link.icon === 'anticorruption'" viewBox="0 0 24 24" role="presentation">
+                  <path
+                    d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Zm1 13h-2v-2h2v2Zm0-4h-2V7h2v4Z"
                   />
                 </svg>
                 <svg v-else viewBox="0 0 24 24" role="presentation">

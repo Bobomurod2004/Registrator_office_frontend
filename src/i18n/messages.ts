@@ -68,6 +68,7 @@ const uz = {
     profile: 'Profil',
     settings: 'Sozlamalar',
     auditLog: 'Audit Log',
+    antiCorruption: 'Korrupsiyaga qarshi kurashish',
   },
   login: {
     pill: 'Xavfsiz HEMIS va OneID',
@@ -151,6 +152,16 @@ const uz = {
     loadError: "Ma'lumotlarni yuklashda xatolik yuz berdi.",
     saveError: 'Saqlashda xatolik yuz berdi.',
     deleteError: "O'chirishda xatolik yuz berdi.",
+  },
+  antiCorruption: {
+    subtitle: "Komplayens nazorat bo'limi, ishonch telefoni va me'yoriy hujjatlar.",
+    hotline: 'Ishonch telefoni',
+    extension: 'Ichki raqam',
+    team: "Bo'lim xodimlari",
+    workHours: 'Ish vaqti',
+    duties: "Bo'lim vazifalari",
+    workPhone: 'Ishchi telefon',
+    telegram: 'Telegram kanali',
   },
   contacts: {
     subtitle: "Bo'lim va xodimlarning telefon raqamlari ro'yxati.",
@@ -798,6 +809,7 @@ const ru: Messages = {
     profile: 'Профиль',
     settings: 'Настройки',
     auditLog: 'Audit Log',
+    antiCorruption: 'Борьба с коррупцией',
   },
   login: {
     pill: 'Безопасный HEMIS и OneID',
@@ -881,6 +893,16 @@ const ru: Messages = {
     loadError: 'Ошибка при загрузке данных.',
     saveError: 'Ошибка при сохранении.',
     deleteError: 'Ошибка при удалении.',
+  },
+  antiCorruption: {
+    subtitle: 'Отдел комплаенс-контроля, телефон доверия и нормативные документы.',
+    hotline: 'Телефон доверия',
+    extension: 'Внутренний номер',
+    team: 'Сотрудники отдела',
+    workHours: 'Время работы',
+    duties: 'Задачи отдела',
+    workPhone: 'Рабочий телефон',
+    telegram: 'Telegram-канал',
   },
   contacts: {
     subtitle: 'Список телефонов отделов и сотрудников.',
@@ -1526,6 +1548,7 @@ const en: Messages = {
     profile: 'Profile',
     settings: 'Settings',
     auditLog: 'Audit Log',
+    antiCorruption: 'Anti-corruption',
   },
   login: {
     pill: 'Secure HEMIS & OneID',
@@ -1609,6 +1632,16 @@ const en: Messages = {
     loadError: 'Failed to load data.',
     saveError: 'Failed to save.',
     deleteError: 'Failed to delete.',
+  },
+  antiCorruption: {
+    subtitle: 'Compliance control department, hotline and regulatory documents.',
+    hotline: 'Hotline',
+    extension: 'Extension',
+    team: 'Department staff',
+    workHours: 'Working hours',
+    duties: 'Department duties',
+    workPhone: 'Office phone',
+    telegram: 'Telegram channel',
   },
   contacts: {
     subtitle: 'Phone numbers of departments and staff.',

@@ -69,6 +69,12 @@ const routes = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/anti-corruption',
+    name: 'anti-corruption',
+    component: () => import('@/views/anti-corruption.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/profile',
     name: 'profile',
     component: () => import('@/views/profile.vue'),

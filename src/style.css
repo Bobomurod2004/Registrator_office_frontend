@@ -6139,3 +6139,218 @@ select.field-input option {
   border-color: rgba(84, 130, 200, 0.45);
   background: linear-gradient(120deg, rgba(30, 55, 95, 0.6) 0%, rgba(24, 38, 62, 0.7) 100%);
 }
+
+/* ===== Korrupsiyaga qarshi kurashish sahifasi ===== */
+.ac-hotline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 20px;
+  padding: 20px 24px;
+  margin-bottom: 22px;
+  border-radius: 20px;
+  border: 1px solid var(--dash-border);
+  background: var(--dash-surface);
+  box-shadow: 0 14px 34px rgba(2, 10, 28, 0.16);
+}
+
+.ac-hotline-logo {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.ac-hotline-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ac-hotline-label,
+.ac-ext-label {
+  font-size: 13px;
+  color: var(--dash-text-secondary);
+}
+
+.ac-hotline-phone {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--dash-red);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.ac-hotline-phone:hover {
+  text-decoration: underline;
+}
+
+.ac-ext {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.ac-ext-chip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--dash-blue);
+  border: 1px solid var(--dash-border);
+  background: var(--dash-surface-soft);
+}
+
+.ac-hotline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.ac-action {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  border-radius: 16px;
+  color: #fff;
+  text-decoration: none;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.ac-action:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(2, 10, 28, 0.25);
+}
+
+.ac-action svg {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  fill: currentColor;
+}
+
+.ac-action-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.ac-action-label {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.ac-action-call {
+  background: linear-gradient(135deg, #17b878, #0f9a62);
+}
+
+.ac-action-telegram {
+  background: linear-gradient(135deg, #2aabee, #1d86c9);
+}
+
+.ac-section {
+  margin-bottom: 26px;
+}
+
+.ac-section-title {
+  margin: 0 0 12px;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--dash-text-primary);
+}
+
+.ac-team {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.ac-person {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 20px 16px;
+  text-align: center;
+  border-radius: 20px;
+  border: 1px solid var(--dash-border-soft);
+  background: var(--dash-surface);
+  box-shadow: 0 14px 34px rgba(2, 10, 28, 0.16);
+}
+
+.ac-person-photo {
+  width: 132px;
+  height: 132px;
+  margin-bottom: 8px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center top;
+  border: 3px solid var(--dash-border);
+}
+
+.ac-person-initial {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 44px;
+  font-weight: 800;
+  color: var(--dash-blue);
+  background: var(--dash-surface-soft);
+}
+
+.ac-person-name {
+  color: var(--dash-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.ac-person-position {
+  color: var(--dash-text-secondary);
+  font-size: 14px;
+}
+
+.ac-person-hours {
+  font-size: 13px;
+  color: var(--dash-text-muted);
+}
+
+.ac-duties {
+  margin: 0;
+  padding: 18px 20px 18px 42px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-radius: 20px;
+  border: 1px solid var(--dash-border-soft);
+  background: var(--dash-surface);
+  color: var(--dash-text-primary);
+  line-height: 1.55;
+}
+
+.ac-duties li::marker {
+  color: var(--dash-blue);
+  font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  .ac-hotline {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .ac-hotline-phone {
+    font-size: 24px;
+  }
+
+  .ac-hotline-actions {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .ac-action {
+    flex: 1 1 100%;
+  }
+}
