@@ -2,17 +2,16 @@
 // Manba: https://uzswlu.uz/korrupsiyaga-qarshi-kurashish (backend talab qilinmaydi).
 
 export const HOTLINE = {
-  phone: '+998712301373',
-  display: '+99871 230 13 73',
-  extensions: ['1061', '1062', '1063', '1064'],
-}
-
-export const WORK_PHONE = {
-  phone: '+998712301342',
-  display: '+99871 230 13 42',
+  phone: '+998712301362',
+  display: '+99871 230 13 62',
+  extensions: ['1044'],
 }
 
 export const TELEGRAM_URL = 'https://t.me/uzdjtu_antikorrupsiya'
+
+// Telegram bot havolasi keyinroq beriladi (masalan 'https://t.me/<bot_username>').
+// Bo'sh bo'lsa, sahifada bot tugmasi ko'rsatilmaydi.
+export const TELEGRAM_BOT_URL = ''
 
 export interface TeamMember {
   name: string

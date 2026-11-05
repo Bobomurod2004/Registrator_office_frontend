@@ -2737,6 +2737,30 @@ body {
   transform: translateY(-2px);
 }
 
+/* Telegram bot oqimi: muvaffaqiyat belgisi va "Botga qaytish" havolasi */
+.callback-success-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  font-size: 24px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(150deg, #34c47c 0%, #1f9d5c 100%);
+}
+
+.callback-bot-btn {
+  display: inline-block;
+  text-decoration: none;
+}
+
+.callback-card p.callback-subhint {
+  margin-top: 10px;
+  font-size: 13px;
+  opacity: 0.85;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
@@ -6244,8 +6268,8 @@ select.field-input option {
   opacity: 0.85;
 }
 
-.ac-action-call {
-  background: linear-gradient(135deg, #17b878, #0f9a62);
+.ac-action-bot {
+  background: linear-gradient(135deg, #7c3dff, #5b2ad6);
 }
 
 .ac-action-telegram {
@@ -6264,9 +6288,10 @@ select.field-input option {
 }
 
 .ac-team {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 24px;
 }
 
 .ac-person {
@@ -6274,22 +6299,31 @@ select.field-input option {
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  padding: 20px 16px;
+  width: 280px;
+  max-width: 100%;
+  padding: 28px 20px 24px;
   text-align: center;
-  border-radius: 20px;
+  border-radius: 24px;
   border: 1px solid var(--dash-border-soft);
-  background: var(--dash-surface);
+  background: linear-gradient(180deg, var(--dash-surface-soft), var(--dash-surface) 55%);
   box-shadow: 0 14px 34px rgba(2, 10, 28, 0.16);
+  transition: transform 0.18s ease, border-color 0.18s ease;
+}
+
+.ac-person:hover {
+  transform: translateY(-3px);
+  border-color: var(--dash-blue);
 }
 
 .ac-person-photo {
-  width: 132px;
-  height: 132px;
-  margin-bottom: 8px;
+  width: 168px;
+  height: 168px;
+  margin-bottom: 12px;
   border-radius: 50%;
   object-fit: cover;
   object-position: center top;
-  border: 3px solid var(--dash-border);
+  border: 4px solid var(--dash-surface);
+  box-shadow: 0 0 0 3px var(--dash-blue), 0 12px 28px rgba(2, 10, 28, 0.25);
 }
 
 .ac-person-initial {

@@ -6,8 +6,8 @@ import {
   DUTIES,
   HOTLINE,
   TEAM,
+  TELEGRAM_BOT_URL,
   TELEGRAM_URL,
-  WORK_PHONE,
 } from '@/data/antiCorruption'
 
 const localeStore = useLocaleStore()
@@ -43,17 +43,6 @@ function initial(name: string) {
         </div>
       </div>
       <div class="ac-hotline-actions">
-        <a class="ac-action ac-action-call" :href="`tel:${WORK_PHONE.phone}`">
-          <svg viewBox="0 0 24 24" role="presentation">
-            <path
-              d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.6.1.4 0 .8-.3 1L6.6 10.8Z"
-            />
-          </svg>
-          <span class="ac-action-text">
-            <span class="ac-action-label">{{ m.antiCorruption.workPhone }}</span>
-            <strong>{{ WORK_PHONE.display }}</strong>
-          </span>
-        </a>
         <a class="ac-action ac-action-telegram" :href="TELEGRAM_URL" target="_blank" rel="noopener noreferrer">
           <svg viewBox="0 0 24 24" role="presentation">
             <path d="M21.8 4.3 2.9 11.6c-1.3.5-1.3 1.2-.2 1.5l4.8 1.5 1.9 5.7c.2.6.1.8.7.8.5 0 .7-.2 1-.5l2.3-2.3 4.8 3.5c.9.5 1.5.2 1.7-.8L22.9 5.6c.3-1.2-.4-1.8-1.1-1.3ZM9.2 14.1l9.6-6c.5-.3.9-.1.5.2l-8 7.2-.3 3.2-1.8-4.6Z" />
@@ -61,6 +50,21 @@ function initial(name: string) {
           <span class="ac-action-text">
             <span class="ac-action-label">{{ m.antiCorruption.telegram }}</span>
             <strong>@uzdjtu_antikorrupsiya</strong>
+          </span>
+        </a>
+        <a
+          v-if="TELEGRAM_BOT_URL"
+          class="ac-action ac-action-bot"
+          :href="TELEGRAM_BOT_URL"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <svg viewBox="0 0 24 24" role="presentation">
+            <path d="M12 2a1 1 0 0 1 1 1v1.1A7 7 0 0 1 19 11v1h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3v-1H4a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1v-1a7 7 0 0 1 6-6.9V3a1 1 0 0 1 1-1Zm-3 9.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm6 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z" />
+          </svg>
+          <span class="ac-action-text">
+            <span class="ac-action-label">{{ m.antiCorruption.telegramBot }}</span>
+            <strong>Telegram</strong>
           </span>
         </a>
       </div>

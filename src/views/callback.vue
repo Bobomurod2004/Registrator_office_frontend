@@ -2,14 +2,47 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useLocaleStore } from '@/stores/locale'
 import { extractApiError } from '@/services/http'
+import { isTelegramState, linkTelegramFromHemis, type TelegramLinkResult } from '@/services/telegramLink'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const localeStore = useLocaleStore()
 const errorMessage = ref<string | null>(null)
 
+// Telegram bot boshlagan login (state `tg_...`): saytga kirilmaydi,
+// faqat natija va "Botga qaytish" tugmasi ko'rsatiladi.
+const query = new URLSearchParams(window.location.search)
+const telegramMode = isTelegramState(query.get('state'))
+const telegramResult = ref<TelegramLinkResult | null>(null)
+// code bir martalik: ikkinchi so'rov "allaqachon ishlatilgan" xatosini qaytarib,
+// muvaffaqiyat o'rniga xato ko'rsatib qo'yadi — shu sabab faqat bitta so'rov.
+let telegramSent = false
+
+async function runTelegramLink() {
+  if (telegramSent) return
+  telegramSent = true
+  const code = query.get('code')
+  if (!code) {
+    telegramResult.value = { ok: false, detail: query.get('error') ?? '', botUrl: null }
+    return
+  }
+  telegramResult.value = await linkTelegramFromHemis(code, query.get('state') ?? '')
+}
+
+function telegramErrorText(result: Extract<TelegramLinkResult, { ok: false }>): string {
+  const t = localeStore.m.telegramLink
+  if (result.detail === null) return t.networkError
+  return result.detail || t.unexpected
+}
+
 onMounted(async () => {
-  const query = new URLSearchParams(window.location.search)
+  if (telegramMode) {
+    await runTelegramLink()
+    return
+  }
+
   try {
     await authStore.handleCallback(query)
     await router.replace({ path: authStore.homePath })
@@ -28,7 +61,34 @@ function backToLogin() {
 
 <template>
   <div class="callback-page">
-    <div class="callback-card">
+    <div v-if="telegramMode" class="callback-card">
+      <template v-if="!telegramResult">
+        <span class="callback-spinner" aria-hidden="true" />
+        <h2>{{ localeStore.m.telegramLink.checking }}</h2>
+        <p>{{ localeStore.m.telegramLink.checkingHint }}</p>
+      </template>
+
+      <template v-else-if="telegramResult.ok">
+        <span class="callback-success-mark" aria-hidden="true">✓</span>
+        <h2>{{ localeStore.m.telegramLink.successTitle.replace('{name}', telegramResult.fullName).replace(', !', '!') }}</h2>
+        <p>{{ localeStore.m.telegramLink.successHint }}</p>
+        <a v-if="telegramResult.botUrl" class="callback-retry callback-bot-btn" :href="telegramResult.botUrl">
+          {{ localeStore.m.telegramLink.backToBot }}
+        </a>
+      </template>
+
+      <template v-else>
+        <span class="callback-error-mark" aria-hidden="true">!</span>
+        <h2>{{ localeStore.m.telegramLink.errorTitle }}</h2>
+        <p>{{ telegramErrorText(telegramResult) }}</p>
+        <p class="callback-subhint">{{ localeStore.m.telegramLink.errorHint }}</p>
+        <a v-if="telegramResult.botUrl" class="callback-retry callback-bot-btn" :href="telegramResult.botUrl">
+          {{ localeStore.m.telegramLink.backToBot }}
+        </a>
+      </template>
+    </div>
+
+    <div v-else class="callback-card">
       <template v-if="!errorMessage">
         <span class="callback-spinner" aria-hidden="true" />
         <h2>Kirish amalga oshirilmoqda…</h2>

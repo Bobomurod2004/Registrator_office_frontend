@@ -1431,5 +1431,44 @@ Foydalanuvchi: universitetning rasmiy saytidagi https://uzswlu.uz/korrupsiyaga-q
 
 ---
 
+## 2026-11-03
+
+### 72. Telegram bot (@uzswlu_rofficebot) orqali boshlangan HEMIS talaba login'i — natija sahifasi
+Backend Telegram bot bilan integratsiya qilindi. Talaba botda "HEMIS orqali ro'yxatdan o'tish"ni bosadi va saytdagi bilan aynan bir xil talaba OAuth'i (client_id=9) ochiladi. HEMIS'da `redirect_uri` faqat bitta ro'yxatdan o'tgan (`/api/auth/callback/studentoauth`), shu sabab login'dan keyin talaba botga emas, saytga qaytadi. Farq faqat `state`da: bot oqimida u **`tg_`** bilan boshlanadi. Backend hujjatidagi namuna Next.js/NextAuth (middleware) uchun yozilgan, bizda esa Vue va oddiy callback sahifasi, shuning uchun middleware kerak bo'lmadi va tekshiruv to'g'ridan-to'g'ri `callback.vue`ning boshiga qo'yildi.
+
+**Bot oqimi (`state` `tg_` bilan boshlansa):** saytga login **qilinmaydi**, sessiyaga hech narsa yozilmaydi. `POST /api/v1/hemis/student/oauth/callback/ {code, state}` yuboriladi (`state` o'zgartirilmaydi, Authorization yo'q). `200 {telegram_linked: true, bot_url, user.full_name}` kelsa "✓ Ro'yxatdan o'tdingiz, {ism}!" va "Botga qaytish" tugmasi chiqadi. `400/403/502 {detail, bot_url}` kelsa backend `detail` matni va "Botga qaytish" tugmasi chiqadi, **login sahifasiga yo'naltirilmaydi**. `bot_url` `null` bo'lsa tugma chiqmaydi.
+
+**Qarorlar:**
+- So'rov umumiy `http` klienti orqali **emas**, oddiy `axios` bilan yuboriladi. `http` saytdagi sessiyaning Bearer tokenini qo'shadi va 401 bo'lsa refresh/`clearSession` qiladi. Agar saytda boshqa foydalanuvchi kirib turgan bo'lsa, bot oqimi uning sessiyasiga ta'sir qilmasligi kerak.
+- `code` bir martalik bo'lgani uchun so'rov bir marta yuboriladi (`telegramSent` bayrog'i). Ikkinchi so'rov "allaqachon ishlatilgan" xatosini qaytarib, muvaffaqiyat o'rniga xato ko'rsatib qo'yardi.
+- Tugma faqat `https://t.me/` bilan boshlanadigan havola uchun chiqadi. Backend javobidagi boshqa URL'ga tugma qilinmaydi.
+- Sahifa joriy interfeys tilida (uz/ru/en, kirill avtomatik). Backend `detail`ni o'zbekcha yuboradi va u o'zgartirilmasdan ko'rsatiladi.
+
+**O'zgartirilgan/yaratilgan fayllar:**
+- [`src/services/telegramLink.ts`](src/services/telegramLink.ts) — **yangi**: `isTelegramState()`, `linkTelegramFromHemis()`. Javob `{ok, fullName|detail, botUrl}` ko'rinishiga keltiriladi. `detail: null` tarmoq xatosini bildiradi (javob umuman kelmagan).
+- [`src/views/callback.vue`](src/views/callback.vue) — `tg_` state uchun alohida rejim: yuklanish, muvaffaqiyat va xato holatlari. Oddiy login oqimi o'zgarmadi.
+- [`src/style.css`](src/style.css) — `.callback-success-mark` (yashil belgi), `.callback-bot-btn`, `.callback-subhint`.
+- [`src/i18n/messages.ts`](src/i18n/messages.ts) — uchala tilga `telegramLink.*` bloki.
+
+**Sinov:** `npm run build` xatosiz o'tdi. Brauzerda dev-server orqali: (1) soxta `tg_` state bilan mahalliy backend (`localhost:8000`) `400` qaytardi. Sahifa login'ga yo'naltirmadi, backend matnini ko'rsatdi, `bot_url` kelmagani uchun tugma chiqmadi. (2) Backend javobini brauzerda soxtalashtirib muvaffaqiyat holati tekshirildi: aynan **bitta** POST ketdi, body `{"code":"abc","state":"tg_ok"}`, sahifada "Ro'yxatdan o'tdingiz, Karimova Dilnoza!" va `https://t.me/uzswlu_rofficebot?start=linked` ga olib boradigan tugma chiqdi. (3) Regressiya: `tg_` bo'lmagan state avvalgidek eski login oqimiga ketdi.
+
+**Hali sinalmagan:** haqiqiy bot orqali to'liq oqim (bot → HEMIS login → sahifa → botga "✅" xabari). Mahalliy backend soxta state'ni `"state parametri yaroqsiz..."` matni bilan va `bot_url`siz rad etdi. Bu imzo tekshiruvi ishlayotganini ko'rsatadi, lekin haqiqiy bot havolasi bilan sinash kerak. Dev'da qaytish manzili `localhost:3000` bo'lgani uchun Telegram shu kompyuterda ochilgan bo'lishi kerak.
+
+### 73. "Korrupsiyaga qarshi kurashish" — universitet telefonlari o'rniga bo'lim boshlig'ining raqami, Telegram bot uchun joy, xodim kartalari markazlashtirildi
+Foydalanuvchi: universitetga tegishli telefon raqamlar olib tashlansin, ularning o'rniga bo'lim boshlig'ining (Hoshimov B.R.) rasmiy sahifadagi kartasidagi raqam qo'yilsin, Telegram kanal o'sha joyda qolsin, Telegram bot ham qo'shilsin (havolasini keyinroq beradi), xodim rasmlari o'rtaroqqa olinib chiroyli qilinsin.
+
+**Qarorlar:**
+- Eski universitet raqamlari (+99871 230 13 73, ichki 1061–1064, ishchi +99871 230 13 42) olib tashlandi. Banner endi bitta raqamni ko'rsatadi: **+99871 230 13 62** (ichki **1044**). Foydalanuvchi bergan skrinshotda raqam "71-230-1362 (Ichki raqam: 1044)" deb yozilgan. Banner yorlig'i "Ishonch telefoni" emas, neytral **"Telefon"** qilindi, chunki bu raqam ishonch telefoni ekani aytilmagan.
+- Ishchi telefon tugmasi olib tashlandi (raqam bittaga qisqardi). Telegram kanal tugmasi o'sha joyda qoldi.
+- **Telegram bot:** `TELEGRAM_BOT_URL` ([`src/data/antiCorruption.ts`](src/data/antiCorruption.ts)) hozircha **bo'sh**, shuning uchun bot tugmasi ko'rinmaydi. Foydalanuvchi bot havolasini keyin beradi. Havola yozilishi bilan banner yonida binafsha "Telegram bot" tugmasi o'zi paydo bo'ladi, boshqa kod o'zgartirilmaydi. Bu bot [72-band]dagi ro'yxatdan o'tish boti (@uzswlu_rofficebot) emas, u boshqa narsa uchun.
+- Xodim kartalari markazga olindi (`flex` + `justify-content: center`), karta kengligi 280px, rasm 132 dan 168px ga kattalashtirildi, ko'k halqa va soya qo'shildi, kartaga hover effekti va yumshoq gradient fon berildi.
+- Sahifa tavsifidan "me'yoriy hujjatlar" so'zi olib tashlandi (hujjatlar bo'limi avval olib tashlangan edi).
+
+**O'zgartirilgan fayllar:** [`src/data/antiCorruption.ts`](src/data/antiCorruption.ts) (`HOTLINE` yangi raqam, `WORK_PHONE` olib tashlandi, `TELEGRAM_BOT_URL`), [`src/views/anti-corruption.vue`](src/views/anti-corruption.vue), [`src/style.css`](src/style.css) (`.ac-team`/`.ac-person*`, `.ac-action-bot`; `.ac-action-call` olib tashlandi), [`src/i18n/messages.ts`](src/i18n/messages.ts) (`antiCorruption.hotline` matni "Telefon", `workPhone` olib tashlandi, `telegramBot` va yangi `subtitle`, uchala tilda).
+
+**Sinov:** `npm run build` xatosiz o'tdi. Brauzerda talaba roli bilan (mahalliy backend endi ishlayotgani uchun soxta sessiya 401 bilan tozalanardi, shu sabab sessiya Pinia orqali qo'yilib, tarmoq so'rovlari bloklandi; keyin tozalandi) sahifa ochildi: banner +99871 230 13 62 va ichki 1044 ni ko'rsatdi, Telegram kanal tugmasi joyida, bot tugmasi yo'q, ikkala karta markazda; 375px mobilda gorizontal siljish yo'q. Bot tugmasi `TELEGRAM_BOT_URL` bo'sh bo'lgani uchun ko'rinmadi va bu holat haqiqatan sinaldi. Havola berilgandagi ko'rinish alohida sinalmadi.
+
+---
+
 ## Qoida
 Bundan keyingi har bir o'zgarishda ushbu faylga yangi sana ostida: nima qilingani, sababi va o'zgartirilgan fayllar ro'yxati qo'shiladi.
