@@ -144,7 +144,9 @@ router.beforeEach((to) => {
   }
 
   if (to.meta.permission && !auth.can(String(to.meta.permission))) {
-    return { path: auth.homePath }
+    // homePath'ning o'zi ruxsatsiz sahifa bo'lsa, unga qaytarish cheksiz
+    // yo'naltirish beradi va sahifa umuman ochilmaydi — profilga tushiramiz.
+    return auth.homePath === to.path ? { name: 'profile' } : { path: auth.homePath }
   }
 
   return true

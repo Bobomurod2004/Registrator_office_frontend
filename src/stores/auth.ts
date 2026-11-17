@@ -351,8 +351,20 @@ export const useAuthStore = defineStore('auth', () => {
     return allowedPaths.value === null
   }
 
+  /**
+   * Bosh sahifa foydalanuvchi HAQIQATAN ocha oladigan sahifa bo'lishi shart.
+   * Avval rahbar uchun doim `/leadership-appeals` qaytarilardi. Lekin u
+   * `handle_leadership_appeals` talab qiladi, bu esa faqat biror rahbar
+   * (AppealRecipient) mas'ullari ro'yxatiga qo'shilgan xodimda bor. Yangi
+   * prorektorda u yo'q edi: router uni yana homePath'ga, ya'ni o'sha sahifaga
+   * qaytarardi va cheksiz yo'naltirish sabab login hech qachon tugamasdi.
+   */
   const homePath = computed(() => {
-    if (isLeaderOnly.value) return '/leadership-appeals'
+    if (isLeaderOnly.value) {
+      if (can('handle_leadership_appeals')) return '/leadership-appeals'
+      if (can('handle_corruption_reports')) return '/corruption-reports'
+      return '/info'
+    }
     if (isCorruptionOnly.value) return '/corruption-reports'
     return isStaff.value ? '/statistics' : '/services'
   })
