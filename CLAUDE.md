@@ -1470,5 +1470,318 @@ Foydalanuvchi: universitetga tegishli telefon raqamlar olib tashlansin, ularning
 
 ---
 
+## 2026-11-13
+
+### 74. Bot orqali o'qituvchi/xodim login'i — callback endi to'g'ri backend endpoint'ini chaqiradi
+Backend Telegram bot orqali o'qituvchi (xodim OAuth'i) kirishini qo'shdi: HEMIS `state=tg_...` bilan `/api/auth/callback/hemis`ga qaytaradi. Oldin [72-band]dagi `callback.vue` `tg_` state'ni har doim talaba endpoint'iga (`/api/v1/hemis/student/oauth/callback/`) yuborardi — o'qituvchi uchun bu noto'g'ri edi.
+
+**Yechim:** callback yo'li (`window.location.pathname`) bo'yicha oqim aniqlanadi: `/hemis` bilan tugasa — xodim (`/api/v1/hemis/oauth/callback/`), aks holda talaba. Qolgan mantiq (bitta so'rov, natija sahifasi, "Botga qaytish") o'zgarmadi. Saytdagi oddiy xodim login'i o'zgarishsiz (`state` `tg_` bilan boshlanmaydi).
+
+**O'zgartirilgan fayllar:**
+- [`src/services/telegramLink.ts`](src/services/telegramLink.ts) — `TelegramFlow`, `telegramFlowFromPath()`; `linkTelegramFromHemis()` ga ixtiyoriy `flow` (standart `student`).
+- [`src/views/callback.vue`](src/views/callback.vue) — `runTelegramLink()` oqimni yo'ldan aniqlab uzatadi.
+
+**Sinov:** `npm run build` (type-check + vite build) xatosiz o'tdi. Haqiqiy bot → HEMIS o'qituvchi oqimi jonli sinalmadi (kredensial va bot havolasi kerak).
+
+---
+
+### 75. Rahbariyatga murojaatlar paneli (Telegram bot murojaatlari) — yangi modul, ruxsatga asoslangan menyu, bildirishnoma target_type routing
+Backend (2-tahrir spec) Telegram bot orqali kelgan murojaatlar (talaba/o'qituvchi/xodim/ota-ona) uchun alohida modul berdi: `GET/POST/PATCH/DELETE /api/v1/appeals/recipients/`, `GET /api/v1/appeals/`, `GET/PATCH /api/v1/appeals/{id}/`, `POST .../notes/`, `GET .../attachments/{aid}/download/`, `GET /api/v1/appeals/stats/`. Bu xizmat murojaatlaridan (`/requests/`) alohida — alohida menyu, alohida sahifa.
+
+**Ruxsat:** `permissions` ro'yxati endi `/auth/me/` va login javobida keladi. Backend uni o'zi hisoblaydi (SuperAdmin istisnolari bilan), shuning uchun probe so'rov kerak emas. `can('handle_leadership_appeals')` — menyu va route; `can('manage_appeal_recipients')` — "Rahbarlar" tabi.
+
+**Xulq-atvor o'zgarishi (muhim):** agar backend `permissions` yuborsa, u ruxsatlarning yagona manbai bo'ladi — SuperAdmin ham faqat ro'yxatdagi ruxsatlarga ega (oldin SuperAdmin hamma narsaga `true` edi). Eski javoblarda (ro'yxat yo'q) avvalgidek ishlaydi.
+
+**Qoidalar (backend talablari):** tafsilot faqat foydalanuvchi aniq ochganda yuklanadi (`GET /appeals/{id}/` audit yozadi); javob yuborilishidan oldin tasdiqlash dialogi; javob `white-space: pre-wrap` matn sifatida, `v-html` emas; ilovalar Bearer bilan blob orqali; anonim murojaatda `applicant` null — "Anonim"; mas'ul tanlash `GET /auth/users/?is_staff=true&search=` (debounce 400ms); til faqat uz/ru (kirill avtomatik).
+
+**Bildirishnoma:** `target_type` bo'yicha routing — `request` → `/appeals?request=`, `appeal` → `/leadership-appeals?appeal=`, `corruption_report` → hozircha sahifa yo'q (faqat o'qilgan deb belgilanadi). `request` maydoni zaxira sifatida qoldirildi.
+
+**O'zgartirilgan/yaratilgan fayllar:**
+- [`src/stores/leadershipAppeals.ts`](src/stores/leadershipAppeals.ts) — **yangi**. Rahbarlar CRUD, murojaatlar ro'yxati/tafsilot/PATCH/notes, blob yuklash, statistika; snake→camel normalizatsiya.
+- [`src/views/leadership-appeals.vue`](src/views/leadership-appeals.vue) — **yangi**. Filtrlar, ro'yxat, sahifalash, `?appeal=` bilan sinxronlanadigan ochiq kartalar; tablar: Murojaatlar / Statistika / Rahbarlar (ruxsat bo'lsa).
+- [`src/components/leadership/LeadershipAppealDetail.vue`](src/components/leadership/LeadershipAppealDetail.vue) — **yangi**. Tafsilot, holat/mas'ul/javob/izoh amallari, javob tasdiqlash dialogi.
+- [`src/components/leadership/LeadershipRecipientsPanel.vue`](src/components/leadership/LeadershipRecipientsPanel.vue) — **yangi**. Rahbarlar CRUD, mas'ul xodimlarni qidirib tanlash; o'chirishda backend 400 sababi ko'rsatiladi.
+- [`src/components/leadership/LeadershipStatsPanel.vue`](src/components/leadership/LeadershipStatsPanel.vue) — **yangi**. Statistika; oylik seriyada bo'sh oylar 0 bilan to'ldiriladi.
+- [`src/styles/leadership.css`](src/styles/leadership.css) — **yangi** (`main.ts` dan import qilinadi). `--dash-*` tokenlar, yorug'/qorong'i tema.
+- [`src/stores/auth.ts`](src/stores/auth.ts) — `BackendUser.permissions`, `resolvePermissions()`, `permissionsExplicit`; `can()` samarali ro'yxatga tayanadi.
+- [`src/stores/notifications.ts`](src/stores/notifications.ts) — `target_type`, `target_id` maydonlari.
+- [`src/components/AppHeader.vue`](src/components/AppHeader.vue) — bildirishnoma bosilganda `target_type` bo'yicha yo'naltirish.
+- [`src/components/DashboardLayout.vue`](src/components/DashboardLayout.vue) — ruxsat bo'lsa "Rahbariyat murojaatlari" menyusi (`leadership` ikonkasi).
+- [`src/router/index.ts`](src/router/index.ts) — `/leadership-appeals` (`meta.permission`), guard'da `can()` tekshiruvi.
+- [`src/i18n/messages.ts`](src/i18n/messages.ts) — uz/ru/en `leadership.*` bloki.
+- [`src/main.ts`](src/main.ts) — `leadership.css` import.
+
+**Sinov:** `npm run build` (type-check + vite build) xatosiz o'tdi. Jonli backend va kredensial bilan sinalmadi — ruxsat, ro'yxat, tafsilot, javob yuborish, blob yuklash va bildirishnoma routing'i haqiqiy javob bilan tasdiqlanishi kerak.
+
+**Ochiq savollar (backend'dan):** mas'ul bo'lmagan rahbar (handler) `GET /appeals/recipients/` ni ko'ra oladimi — biriktirish ro'yxati shundan olinadi, 403 bo'lsa biriktirish yashiriladi; `corruption_report` uchun sahifa qachon bo'ladi.
+
+---
+
+## 2026-11-16
+
+### 76. Rahbar rejimi (menyu/bosh sahifa/URL cheklovi) va shaxs qidiruv paneli (drawer)
+Foydalanuvchi: rahbar kirganda ochiq joy rahbariyat murojaatlari bo'lsin, menyuda faqat shu bo'lim va Info qolsin, qolganlari yopilsin. Murojaatdagi ismni (masalan "Karimova Jumagul") topish uchun o'ng tomondan ochiladigan qidiruv kerak: ism, familiya, passport seriyasi va h.k. bo'yicha **talaba (HEMIS)** va **xodim**ni topib, to'liq ma'lumotini ko'rsatsin — xodimlar uchun ham shunday bo'lsin. Rahbar aniqlash rol kodi bo'yicha qilindi.
+
+**Qarorlar:**
+- `LEADER_ROLE_CODES` bo'sh massiv — aniq rol kodi (masalan `leader`) backend jamoasidan tasdiqlanmaguncha rahbar rejimi **yoqilmaydi** (xavfsiz standart). Kod kiritilgach faqat shu ro'yxatga qo'shiladi.
+- Rahbar menyusi: "Rahbariyat murojaatlari" (bosh sahifa) + "Info". SuperAdmin hech qachon rahbar rejimiga tushmaydi.
+- Router: rahbar faqat `/leadership-appeals`, `/info`, `/profile` ga kira oladi, qolgani `homePath`ga qaytariladi.
+- Qidiruv paneli rahbariyat murojaatlari va xodimlar `/appeals` sahifasida. Ikki tab: Talabalar (`/api/v1/hemis/students/search/`) va Xodimlar (`/api/v1/auth/users/?is_staff=true&search=`). Xodim rasmi himoyalangan, shu sabab harf-avatar. Header qidiruvi o'zgarmadi.
+- Talaba tafsiloti header qidiruvidan ajratib olindi va ikki joyda qayta ishlatiladi (dublikat yo'q).
+
+**O'zgartirilgan/yaratilgan fayllar:**
+- [`src/stores/auth.ts`](src/stores/auth.ts) — `LEADER_ROLE_CODES`, `isLeaderOnly`, `homePath` rahbar uchun `/leadership-appeals`.
+- [`src/router/index.ts`](src/router/index.ts) — `LEADER_ALLOWED_PATHS` va `beforeEach` cheklovi.
+- [`src/components/DashboardLayout.vue`](src/components/DashboardLayout.vue) — rahbar menyusi (faqat 2 band).
+- [`src/components/AppHeader.vue`](src/components/AppHeader.vue) — talaba natijasi `StudentSearchItem`ga o'tkazildi; eski `studentDetailGroups`/`formatBirthDate` olib tashlandi.
+- **Yangi:** [`src/utils/studentDetail.ts`](src/utils/studentDetail.ts), [`src/components/StudentSearchItem.vue`](src/components/StudentSearchItem.vue), [`src/services/staffLookup.ts`](src/services/staffLookup.ts), [`src/components/PersonSearchDrawer.vue`](src/components/PersonSearchDrawer.vue), [`src/styles/person-search.css`](src/styles/person-search.css).
+- [`src/views/leadership-appeals.vue`](src/views/leadership-appeals.vue), [`src/views/appeals.vue`](src/views/appeals.vue) — "Shaxsni qidirish" tugmasi va drawer.
+- [`src/main.ts`](src/main.ts) — `person-search.css` import.
+- [`src/i18n/messages.ts`](src/i18n/messages.ts) — uchala tilga `person.*` bloki.
+
+**Sinov:** `npm run build` (type-check + vite build) xatosiz o'tdi. Dev-serverda (test sessiya bilan): rahbar roli vaqtincha yoqilib, `/statistics` ga kirilganda `/leadership-appeals`ga yo'naltirildi, menyuda faqat "Rahbariyat murojaatlari" va "Info" qoldi, `/appeals` ga kirish bloklandi, `/info` ochildi. Xodim sifatida drawer ochilib, input va tablar ko'rindi, qidiruv xatosi (backend ulanmagan) aniq matn bilan chiqdi. Vaqtinchalik rol kodi qaytarildi (`LEADER_ROLE_CODES = []`), test sessiya tozalandi. **Jonli backend bilan sinalmadi** (backend `localhost:8000` ishlamayapti).
+
+**Ochiq savollar (backend'dan):** `GET /api/v1/hemis/students/search/` passport seriyasi va JSHSHIR bo'yicha qidiradimi; `GET /api/v1/auth/users/?search=` xodimni familiya/telefon bo'yicha topadimi.
+
+### 77. Rahbar rol kodi belgilandi — `prorektor`
+Foydalanuvchi: "prorektor shunaqa rol mavjud menda" — rahbar roli sifatida `prorektor` kodi berildi.
+
+**O'zgartirilgan fayllar:**
+- [`src/stores/auth.ts`](src/stores/auth.ts) — `LEADER_ROLE_CODES = ['prorektor']` (avval bo'sh edi). Shu roli bor foydalanuvchi uchun rahbar rejimi yoqiladi: bosh sahifa `/leadership-appeals`, menyuda faqat "Rahbariyat murojaatlari" va "Info", boshqa sahifalar bloklanadi.
+
+**Sinov:** `npm run build` (type-check + vite build) xatosiz o'tdi. **Jonli sinalmadi** — `prorektor` roli bilan haqiqiy kirish yo'q. Rol kodi backendda aynan `prorektor` ekani tasdiqlanmagan (foydalanuvchi nomi aytgan); agar kod boshqacha bo'lsa, shu konstantani tuzatish kifoya.
+
+---
+
+### 78. Shaxs qidiruvida xodimlar HEMIS'dan qidiriladi (`/hemis/employees/search/`)
+Backend yangi endpoint berdi: `GET /api/v1/hemis/employees/search/?q=&limit=` (faqat xodim/admin, talaba uchun 403; `q` kamida 2 belgi, `limit` standart 20, maksimum 50). Javob: `{source, count, truncated, results: [{hemis_id, full_name, department, in_system, user_id, user_role, local_department_id}]}`.
+
+**O'zgartirilgan fayllar:**
+- [`src/services/staffLookup.ts`](src/services/staffLookup.ts) — yangi `searchHemisEmployees(q, limit)` va `HemisEmployeeResult`/`HemisEmployeeSearch` turlari. Eski `searchStaff` (tizimdagi `/auth/users/`) rahbar biriktirish ro'yxati uchun o'zgarishsiz qoldi.
+- [`src/components/PersonSearchDrawer.vue`](src/components/PersonSearchDrawer.vue) — "Xodimlar" tabi endi HEMIS'dan qidiradi. Har bir natijada ism, HEMIS ID, bo'lim va "Tizimda"/"Tizimda ro'yxatdan o'tmagan" belgisi ko'rinadi. `truncated` bo'lsa "Natijalar ko'p" xabari chiqadi. 403 bo'lsa aniq xabar ko'rsatiladi (`isForbidden`).
+- [`src/styles/person-search.css`](src/styles/person-search.css) — `.person-staff-badge` (yashil `.is-in-system` varianti bilan).
+- [`src/i18n/messages.ts`](src/i18n/messages.ts) — uchala tilga `person.staffForbidden`, `person.inSystem`; `person.staffPlaceholder` endi faqat ism/familiya/HEMIS ID ni aytadi (backend endpoint telefon bo'yicha qidirmaydi).
+
+**Sinov:** `npm run build` (type-check + vite build) xatosiz o'tdi. Jonli sinalmadi — backend ulanishi va xodim hisobi kerak.
+
+---
+
+### 79. Rahbariyat murojaatlari — ikki panelli ko'rinish, rad etish olib tashlandi
+Dizayn canvas'ida tasdiqlangan C variant kodga qo'llandi: chapda murojaatlar ro'yxati, o'ngda tanlangan murojaat tafsiloti. Tafsilot tepasida kod, mavzu, holat va 3 bosqichli tracker (Yuborildi → Ko'rib chiqilmoqda → Javob berildi) bor. Rad etish va rad etilgan holat UI'dan olib tashlandi: murojaatga har doim javob beriladi. Muddat (SLA) bu sahifada yo'q edi, shu sabab o'chirish kerak bo'lmadi.
+
+**O'zgartirilgan fayllar:**
+- [`src/views/leadership-appeals.vue`](src/views/leadership-appeals.vue) — ro'yxat va tafsilot chap/o'ng panelga ajratildi; tanlangan murojaat `?appeal=` bilan sinxronlanadi. Tafsilot faqat tanlanganda yuklanadi (`GET /appeals/{id}/` audit yozadi). Filtrda "Rad etildi" yo'q.
+- [`src/components/leadership/LeadershipAppealDetail.vue`](src/components/leadership/LeadershipAppealDetail.vue) — qayta yozildi: tracker, ma'lumotlar gridi, murojaatchi bloki ("Shaxsni qidirish" tugmasi drawer'ni ochadi), matn, ilovalar, amallar (ko'rib chiqishga olish, yopish, mas'ul biriktirish), javob (har bir murojaatga javob beriladi), izohlar. "Rad etish" tugmasi olib tashlandi.
+- [`src/stores/leadershipAppeals.ts`](src/stores/leadershipAppeals.ts) — `APPEAL_STATUSES` filtr ro'yxatidan `rejected` chiqarildi (tur va normalizatsiya o'zgarmadi).
+- [`src/styles/leadership-split.css`](src/styles/leadership-split.css) — **yangi**: ikki panel, ro'yxat elementi, tracker uslublari (`--dash-*` tokenlar).
+- [`src/i18n/messages.ts`](src/i18n/messages.ts) — uchala tilga `leadership.responseRule`, `selectPrompt`, `trackSubmitted`, `trackReview`, `trackAnswered`, `searchPerson`.
+
+**Hali qilinmagan:** dizaynda "Yo'naltirish" va "Murojaatchini biriktirish/almashtirish" bor, lekin ularning backend endpointi yo'q (rahbariyat murojaatlari uchun yo'naltirish va murojaatchini bog'lash API'si hali tasdiqlanmagan). Shu sababli ular kodga qo'shilmadi.
+
+**Sinov:** `npm run build` (type-check + vite build) xatosiz o'tdi. Brauzerda jonli tekshirilmadi: backend ulanmagan va `prorektor`/rahbar hisobi yo'q. Ko'rinish (ikki panel, tracker, yorug'/qorong'i tema) jonli sahifada tasdiqlanishi kerak.
+
+---
+
+### 80. Xodim qidiruv natijasi kengaytirildi — lavozim, ilmiy daraja, shartnoma, tuzilma, manzil
+Backend `GET /api/v1/hemis/employees/search/` javobiga HEMIS'dagi boy maydonlarni qo'shdi (hali deploy qilinmagan). Sanalar endi `YYYY-MM-DD`, kodlar (`*_code`) alohida maydonlarda.
+
+**O'zgartirilgan fayllar:**
+- [`src/services/staffLookup.ts`](src/services/staffLookup.ts) — `HemisEmployeeResult`ga yangi maydonlar: `birthDate`, `academicDegree`/`academicRank`, `staffPosition`, `employeeType`/`employeeStatus`, `employmentForm`/`employmentStaff`, `contractDate`/`decreeDate`, `departmentStructureType`/`departmentLocalityType`, `province`/`district` va ularning `*Code`lari. Hammasi `null`ga ruxsat etilgan.
+- [`src/utils/staffDetail.ts`](src/utils/staffDetail.ts) — **yangi**: xodim maydonlarini 4 bo'limga ajratadi (Shaxsiy, Lavozim va ish, Tashkiliy tuzilma, Manzil), bo'sh qiymatlar yashiriladi.
+- [`src/components/StaffSearchItem.vue`](src/components/StaffSearchItem.vue) — **yangi**: talaba kartasi (`StudentSearchItem`) bilan bir xil ochiladigan karta.
+- [`src/components/PersonSearchDrawer.vue`](src/components/PersonSearchDrawer.vue) — "Xodimlar" tabi endi `StaffSearchItem` ishlatadi; yagona natija avtomatik ochiladi.
+- [`src/i18n/messages.ts`](src/i18n/messages.ts) — uchala tilga `person.staffDetail` bloki.
+
+**Taxmin:** `academic_degree`, `staff_position`, `employee_type`, `province` va h.k. nomlari backend xabaridagi `*_code` nomlaridan kelib chiqib olingan (`*_code` ning asl nomi). Backend haqiqiy javobni yuborgach tekshiriladi.
+
+**Sinov:** `npm run build` xatosiz o'tdi. Jonli sinalmadi: endpoint hali deploy qilinmagan.
+
+---
+
+### 81. Xodim qidiruv natijasida rasm (ixtiyoriy)
+Backend xodim javobida `image` yuborsa, u karta avatarida ko'rsatiladi (nisbiy yo'l `resolveMediaUrl` orqali to'liq URL bo'ladi). Yuborilmasa harf-avatar qoladi.
+
+**O'zgartirilgan fayllar:**
+- [`src/services/staffLookup.ts`](src/services/staffLookup.ts) — `HemisEmployeeResult.imageUrl` qo'shildi (`image` maydonidan).
+- [`src/components/StaffSearchItem.vue`](src/components/StaffSearchItem.vue) — avatar: rasm bo'lsa `<img>`, bo'lmasa harf.
+
+**Sinov:** `npm run build` xatosiz o'tdi. Backend `image` yubormagan bo'lsa, rasm chiqmaydi — bu kutilgan holat.
+
+---
+
+### 82. Xodim qidiruv natijasiga telefon qo'shildi
+Backend xodim javobiga `phone` maydonini qo'shdi. Frontend uni `HemisEmployeeResult.phone` ga o'qiydi va xodim kartasining "Shaxsiy" bo'limida "Telefon" sifatida ko'rsatadi (bo'sh bo'lsa yashiriladi).
+
+Backend xabariga ko'ra, rasm bo'lmagan xodimlarda `image` bo'sh satr keladi. Frontend buni `null` deb o'qiydi va harf-avatar ko'rsatadi.
+
+**O'zgartirilgan fayllar:**
+- [`src/services/staffLookup.ts`](src/services/staffLookup.ts) — `HemisEmployeeResult.phone` (`phone` maydonidan).
+- [`src/utils/staffDetail.ts`](src/utils/staffDetail.ts) — "Shaxsiy" bo'limiga telefon qatori.
+- [`src/i18n/messages.ts`](src/i18n/messages.ts) — uchala tilga `person.staffDetail.phone`.
+
+**Sinov:** `npm run build` xatosiz o'tdi. Jonli sinalmadi, lekin backend yangi javobni tasdiqlagan.
+
+---
+
+## 2026-11-17
+
+### 83. Rahbariyat murojaatlari: kelgan fayllarni ko'rish va javobga fayl biriktirish
+Foydalanuvchi: bot orqali kelgan murojaatga javob berishda fayl yuborib bo'lmaydi, kelgan faylni ko'rib ham bo'lmaydi. Oldin ilovalar faqat yuklab olinardi.
+
+**Backend kontrakti** lokal backend kodidan (`Reistrator office/appeals/views.py`, `services.py`) va `FRONTEND_APPEALS_UZ.md` dan olindi:
+- `POST /api/v1/appeals/{id}/response-files/`: multipart, maydon `file`. Faqat `pdf/jpg/jpeg/png`, 10 MB gacha, bir murojaatga ko'pi bilan 5 ta. Fayl darhol murojaatchining botiga yuboriladi. `201` bilan `{id, display_name, extension, size, direction: "response", created_at}` qaytadi.
+- `attachments` ro'yxatidagi har bir faylda `direction` bor: `submission` (murojaatchidan) yoki `response` (xodimdan).
+
+**Qarorlar:**
+- Fayl ko'rish oynasi (modal): rasm `<img>`, PDF `<iframe>` orqali ochiladi. Fayl Bearer token bilan blob qilib olinadi va blob turi kengaytmadan beriladi. Backend `as_attachment` yuborgani uchun turi noaniq kelishi mumkin edi. Oyna Esc tugmasi yoki fonni bosish bilan yopiladi, blob URL tozalanadi. Har bir ochish backend audit jurnaliga yoziladi.
+- Javob shakli: matn ixtiyoriy, agar fayl biriktirilgan bo'lsa. Avvalgi tasdiqlash dialogi saqlandi va unda nechta fayl ketishi yoziladi. Avval matn, keyin fayllar navbat bilan yuboriladi. Biror fayl xato bersa, yuborilmaganlari ro'yxatda qoladi va qayta yuborish mumkin.
+- Fayl turi, hajmi va soni brauzerda ham tekshiriladi (backend baribir tekshiradi). Fayl yuklashga 60 soniya timeout berildi, umumiy 10 soniya yetmasligi mumkin edi.
+- Murojaatchi fayllari "Ilovalar" bo'limida, xodim yuborgan fayllar "Javob" bo'limida alohida ko'rsatiladi.
+
+**O'zgartirilgan fayllar:**
+- [`src/stores/leadershipAppeals.ts`](src/stores/leadershipAppeals.ts): `AppealAttachment.direction`/`createdAt`, `RESPONSE_FILES_MAX`/`RESPONSE_FILE_MAX_BYTES`/`RESPONSE_FILE_EXTENSIONS`, `previewKind()`, `fetchAttachmentUrl()`, `uploadResponseFile()`. `downloadAttachment()` oldindan ochilgan URL'ni qayta ishlata oladi.
+- [`src/components/leadership/LeadershipAppealDetail.vue`](src/components/leadership/LeadershipAppealDetail.vue): fayl ro'yxati (tur belgisi, "Ko'rish"/"Yuklab olish"), yuborilgan javob fayllari, fayl biriktirish va ko'rish oynasi.
+- [`src/styles/leadership.css`](src/styles/leadership.css): `.lap-att-*`, `.lap-pending-*`, `.lap-preview-*`.
+- [`src/i18n/messages.ts`](src/i18n/messages.ts): uchala tilga `leadership.view`/`opening`/`close`/`sentFiles`/`attachFile`/`removeFile`/`sending`/`fileHint`/`fileTypeError`/`fileSizeError`/`fileLimitError`/`confirmFiles`.
+
+**Sinov:** `npm run build` (type-check + vite build) xatosiz o'tdi. Brauzerda jonli sinalmadi, chunki mas'ul xodim hisobi va bot orqali kelgan murojaat yo'q. Fayl ochilishi, yuklanishi va botga yetib borishi haqiqiy murojaat bilan tekshirilishi kerak.
+
+### 84. "Murojaatchi yuborgan faylni ko'ra olmayapman": sababi aniqlandi, kod xatosi emas
+Foydalanuvchi murojaatchi yuborgan faylni panelda ko'ra olmadi.
+
+**Tekshiruv (lokal Docker backend bilan):**
+- Bazada 4 ta murojaat bor, murojaatchi fayli (`direction=submission`) **birorta ham yo'q**. Yagona fayl 83-band sinovida xodim yuborgan javob fayli (`response`).
+- Bot kodi (`bot/attachments.py`, `handlers/appeal.py`, `api_client._submit`) fayllarni `attachments` multipart maydonida yuboradi, konteynerdagi kod yangi.
+- `BotAppealCreateSerializer` haqiqiy multipart JPG faylni qabul qildi. `create_appeal()` tranzaksiya ichida chaqirildi (keyin rollback qilindi): fayl saqlandi va `AppealDetailSerializer` uni `direction: "submission"` bilan qaytardi.
+- Xulosa: zanjir ishlaydi, sinov murojaatlarida murojaatchi botda fayl biriktirmagan. Bot faylni faqat mavzu, matn va fayl qadamlarida qabul qiladi. Rahbar tanlash yoki rozilik qadamida yuborilgan fayl saqlanmaydi.
+
+**Frontend tuzatishi (kamchilik shunda edi: fayl bo'lmasa sahifa hech narsa demasdi):**
+- [`src/components/leadership/LeadershipAppealDetail.vue`](src/components/leadership/LeadershipAppealDetail.vue): "Ilovalar" bo'limi endi doim ko'rinadi. Fayl bo'lmasa "Murojaatchi fayl biriktirmagan." yoziladi. Yuklash xatosi shu bo'limning o'zida chiqadi, javob bo'limidagi takroriy qator olib tashlandi.
+- [`src/views/leadership-appeals.vue`](src/views/leadership-appeals.vue): ro'yxatda fayli bor murojaat yonida `📎 N` belgisi (`attachments_count`, javob fayllari ham sanaladi).
+- [`src/i18n/messages.ts`](src/i18n/messages.ts): uchala tilga `leadership.noAttachments`. [`src/styles/leadership.css`](src/styles/leadership.css): `.lap-list-files`.
+
+**Sinov:** `npm run build` xatosiz o'tdi. Backend zanjiri konteyner ichida sinaldi (bazaga yozilmadi). Botda haqiqatan fayl biriktirib yuborilgan murojaat bilan panel hali sinalmadi.
+
+### 85. Fayl yetib kelmasligi va API sekinligi: chuqur tekshiruv (kod o'zgarmadi)
+Foydalanuvchi: botda murojaatga fayl yuborayapman, lekin panelga kelmayapti; ma'lumotlar API'dan juda sekin kelmoqda.
+
+**Fayl. Har bir bo'g'in alohida sinaldi, hammasi ishlaydi:**
+- Yangi murojaat `RM-55TA-GYYQ` bazaga faylsiz kelgan.
+- Shu murojaat paytida botga ketma-ket 7 ta update kelgan (`update_id` 147241385–391, oraliq yo'q). Bular: menyu, rozilik, rahbar, mavzu, matn, "tayyor", "yuborish". Alohida fayl xabari botga umuman kelmagan.
+- Bot oqimi haqiqiy `Dispatcher` + soxta Telegram/API bilan simulyatsiya qilindi (skript: scratchpad `sim_appeal.py`, bot konteynerida). MemoryStorage va haqiqiy Redis bilan ham: fayl qadamidagi rasm+PDF → backend'ga 2 ta fayl; matn qadamida izohli rasm → 1 ta fayl. Rahbar tanlash qadamidagi rasm saqlanmaydi (bot "tugmani tanlang" deydi).
+- Bot `_submit` yasagan multipart so'rovning aynan o'zi `BotAppealCreateView`ga berildi (secret tekshiruvisiz, tranzaksiya rollback): `201`, 1 ta ilova saqlandi.
+- Panel orqali yuborilgan javob fayli (`response-files`) `201` qaytargan. Bugun `sendDocument` xatosi loglarda yo'q (`logs/app.log` dagi "boom" xatolari 16-noyabr testlaridan).
+- Xulosa: fayl Telegram'dan botga yetib kelmagan. Bot tasdiqlash xabarida "📎 Fayllar: N" ko'rsatadi, yuborishdan oldin shuni tekshirish kerak.
+
+**Sekinlik. Sabab server sozlamasida, kodda emas:**
+- `api_access.log` bo'yicha bugungi median vaqtlar: `/auth/me/` ~545 ms, `/appeals/recipients/` ~300 ms, `PATCH /appeals/{id}/` ~1.1 s.
+- Xuddi shu endpointlar bitta Django jarayoni ichida 3–20 ms (median 9 ms). Konteyner ichidan gunicorn'ga 120 ta so'rov: median 30 ms, lekin har 30 tadan 4–7 tasi 400–800 ms. Sovuq start emas, vaqt o'tishi bilan kamaymaydi.
+- Docker VM: `MemTotal` 3.8 GB, `MemAvailable` 0.86 GB, swap 1 GB dan 8 MB qolgan. `gunicorn.conf.py`: `workers = cpu_count*2+1` = 41 sync worker (20 yadro), app 1.66 GB. So'rov swap'ga chiqqan workerga tushsa, sekinlashadi.
+- Qo'shimcha: `DATABASES` da `CONN_MAX_AGE` yo'q (0), har so'rovda yangi ulanish ochiladi (~12–23 ms).
+- `PATCH` va `response-files` yana ~1–2 s ko'proq oladi: Telegram'ga yuborish so'rov ichida sinxron bajariladi.
+
+**Taklif (backend reposida, foydalanuvchi roziligini kutmoqda):** backend `.env` ga `GUNICORN_WORKERS=5`, `settings.py` `DATABASES['default']` ga `CONN_MAX_AGE=60` va `CONN_HEALTH_CHECKS=True`, so'ng `docker compose up -d app`. Muqobil yoki qo'shimcha yo'l: Docker Desktop/WSL xotirasini oshirish.
+
+### 86. API sekinligi tuzatildi (backend reposida, foydalanuvchi roziligi bilan)
+85-banddagi taklif qo'llandi. Frontend kodi o'zgarmadi.
+
+**O'zgartirilgan fayllar (backend: `Desktop/Reistrator office`):**
+- `.env` — oxiriga `GUNICORN_WORKERS=5` qo'shildi (izoh bilan). Faylning qolgan qismi o'qilmadi va o'zgartirilmadi. `gunicorn.conf.py` bu o'zgaruvchini allaqachon o'qiydi.
+- `config/settings.py` — `DATABASES['default']` ga `CONN_MAX_AGE` (`DB_CONN_MAX_AGE` env, standart 60) va `CONN_HEALTH_CHECKS: True`. Faylda foydalanuvchining oldindan commit qilinmagan o'zgarishlari bor edi, ularga tegilmadi.
+- Kod image ichiga ko'chirilgani uchun (bind mount yo'q) `docker compose up -d --build app` bilan faqat `app` qayta qurildi. Boshqa konteynerlar (bot, scheduler, db, redis) qayta ishga tushirilmadi.
+
+**Natija (konteyner ichidan gunicorn'ga 120 tadan so'rov, oldin → keyin):**
+- `/auth/me/`: median 30 → 12 ms, >150 ms sakrashlar 4–7/30 → 8/120.
+- `/appeals/recipients/`: median 9 ms, sakrash 0/120 (max 101 ms).
+- `/appeals/`: median 12 ms, sakrash 0/120 (max 29 ms).
+- Docker VM: `MemAvailable` 0.86 → 2.18 GB, swap bo'sh joyi 8 MB → 736 MB. App xotirasi 1.66 GB → 364 MB.
+
+**Qolgan (86-band):** `/auth/me/` da hali kam sonli (8/120) 0.5–0.9 s sakrashlar bor. View oddiy (`UserProfileSerializer`, tashqi chaqiruv yo'q), sababi aniqlanmadi. `PATCH /appeals/{id}/` va `response-files` dagi Telegram'ga sinxron yuborish (~1–2 s) tegilmadi: uni fon vazifasiga o'tkazish alohida backend o'zgarishi. Productionda worker soni serverning xotirasiga qarab alohida tanlanishi kerak (`GUNICORN_WORKERS` faqat lokal `.env` ga yozildi). Backend o'zgarishlari commit qilinmagan.
+
+### 87. Yangi "Korrupsiya xabarlari" sahifasi (`/corruption-reports`)
+Backend'da korrupsiya xabarlari moduli (`/api/v1/anti-corruption/`) to'liq tayyor edi, lekin frontendda sahifa yo'q edi: xodimga "yangi xabar" bildirishnomasi kelardi, bosilganda esa hech qayerga o'tmasdi. Avval dizayn canvas'ida ko'rsatildi ([Korrupsiya xabarlari paneli](https://claude.ai/artifact/K9KSLf8ja38ZfVf8mRpYAS)), foydalanuvchi tasdiqlagach kodga o'tkazildi.
+
+**Backend kontrakti** (lokal backend kodidan, `anticorruption/views.py`, `serializers.py`, `models.py`):
+- `GET /reports/` — filtrlar `status`, `category`, `anonymity_mode`, `assigned_to_me=true`, `search` (faqat kuzatuv kodi), `page`. Ro'yxatda mazmun yo'q.
+- `GET /reports/{id}/` — to'liq xabar, har ochilishda audit yoziladi. `PATCH` — `status`, `assigned_to` (null mumkin), `response_to_reporter`. Javob to'liq tafsilotni qaytaradi. Holat o'zgarishi va javob xabar beruvchiga botda boradi.
+- `POST .../notes/`, `GET .../attachments/{id}/download/`, `POST .../response-files/` (faqat bot orqali kelgan xabar, aks holda 400), `GET /stats/`.
+- Holatlar: `new → under_review → investigating → confirmed / not_confirmed / rejected`. Anonimlik: `anonymous` (shaxs saqlanmaydi), `confidential` (faqat shu bo'lim ko'radi), `open`.
+- Ruxsat: `handle_corruption_reports`. SuperAdmin uni avtomatik olmaydi (`SUPER_ADMIN_EXCLUDED_PERMISSIONS`). Lokal bazada bu ruxsat faqat `prorektor` rolidagi bitta xodimda.
+- Mas'ullar ro'yxati uchun alohida endpoint yo'q: `GET /auth/users/?is_staff=true&search=` bilan qidiriladi, ruxsatni PATCH paytida backend tekshiradi.
+
+**Qarorlar:**
+- Tuzilma rahbariyat murojaatlari bilan bir xil: chapda ro'yxat, o'ngda tafsilot, `?report=<id>` sinxroni, `.lap-*` uslublari qayta ishlatildi. Fayl turi/hajmi cheklovlari va `previewKind()` `leadershipAppeals.ts` dan import qilinadi.
+- Yakuniy xulosa (Tasdiqlandi / Tasdiqlanmadi / Asos yo'q) bosilganda avval tasdiqlash oynasi chiqadi, chunki xulosa botga darhol ketadi. Yopilgan xabarni "Qayta ko'rib chiqishga qaytarish" mumkin (backend cheklamaydi).
+- Xabar beruvchi ma'lumotlari (`reporter_name`, `contact`, `reporter`) faqat anonim bo'lmagan xabarlarda ko'rsatiladi. Maxfiy xabarda ogohlantirish chiqadi.
+- Yuqoridagi 4 ta hisob `/stats/` dan olinadi (butun bo'lim bo'yicha), holat o'zgarganda qayta yuklanadi.
+- `prorektor` (rahbar rejimi) uchun `/corruption-reports` ruxsat berilgan yo'llarga va menyuga qo'shildi (ruxsat bo'lsa). Oddiy xodim menyusida ham ruxsat bo'lsa chiqadi.
+- Bildirishnoma `target_type: corruption_report` endi sahifaga `?report=<id>` bilan olib boradi.
+
+**Yaratilgan/o'zgartirilgan fayllar:**
+- **Yangi:** [`src/stores/corruptionReports.ts`](src/stores/corruptionReports.ts), [`src/views/corruption-reports.vue`](src/views/corruption-reports.vue), [`src/components/corruption/CorruptionReportDetail.vue`](src/components/corruption/CorruptionReportDetail.vue), [`src/components/corruption/CorruptionStatsPanel.vue`](src/components/corruption/CorruptionStatsPanel.vue), [`src/styles/corruption.css`](src/styles/corruption.css).
+- [`src/router/index.ts`](src/router/index.ts) — `/corruption-reports` (`meta.permission: handle_corruption_reports`), `LEADER_ALLOWED_PATHS` ga qo'shildi.
+- [`src/components/DashboardLayout.vue`](src/components/DashboardLayout.vue) — menyu bandi va yangi `reports` ikonkasi.
+- [`src/components/AppHeader.vue`](src/components/AppHeader.vue) — `corruption_report` bildirishnomasi yo'naltirishi.
+- [`src/i18n/messages.ts`](src/i18n/messages.ts) — uchala tilga `corruption.*` bloki (kirill avtomatik).
+
+**Sinov:** `npm run build` (type-check + vite build) xatosiz o'tdi. Brauzerda dev-server orqali, sinov sessiyasi (`prorektor`, ruxsatlar bilan) Pinia'ga qo'yilib va `XMLHttpRequest` namunaviy javoblar bilan almashtirilib tekshirildi (bazaga hech narsa yozilmadi, keyin sessiya tozalandi): rahbar menyusida "Korrupsiya xabarlari" chiqdi, ro'yxat (3 ta), tafsilot, 4 bosqichli tracker, anonim/maxfiy bloklar, maxfiy xabarda xabar beruvchi qatorlari, xulosa tasdiqlashdan oldin PATCH ketmasligi va keyin aynan `{"status":"not_confirmed"}` ketishi, tracker/ro'yxat/tarix yangilanishi, "O'zimga biriktirish" (`{"assigned_to":6019}`), xodim qidiruvi so'rovi, javob tasdiqlash oynasi, statistika tabi — barchasi ishladi, konsolda xato yo'q. Qorong'i temada holat va anonimlik ranglari `getComputedStyle` bilan tekshirildi. Skrinshot vositasi bu muhitda sahifaning faqat bir qismini olgani sababli vizual tekshiruv to'liq qilinmadi. Haqiqiy backend bilan jonli sinalmadi: bazada hali korrupsiya xabari yo'q.
+
+### 88. Korrupsiya xodimi rejimi va bildirishnomalarni egasiga tegishlisi bilan cheklash
+Foydalanuvchi: korrupsiya xodimi faqat korrupsiya xabarlarini ko'rsin, boshqa hamma narsa olib tashlansin, Info qolsin. Har kimga faqat o'ziga tegishli bildirishnoma kelsin.
+
+**Kim "korrupsiya xodimi":** lokal bazada `handle_corruption_reports` ruxsatli rollar: `anticorruption_officer` (faqat shu ruxsat), `karupsiya` (+ `send_bot_messages`) va `prorektor`. Rejim rol kodi bilan emas, ruxsatlar bilan aniqlanadi, chunki rollar dinamik: `isCorruptionOnly` = SuperAdmin emas, rahbar rejimida emas, `handle_corruption_reports` bor va `BROAD_PERMISSIONS` (rahbariyat murojaatlari, `manage_*`, `dispatch_requests`, `view_audit_log`) dan birortasi yo'q. `send_bot_messages` bunga to'sqinlik qilmaydi. `prorektor` avvalgidek rahbar rejimida qoladi (rahbariyat + korrupsiya + Info).
+
+**Nima o'zgardi:**
+- Korrupsiya xodimi menyusida faqat "Korrupsiya xabarlari" va "Info" (sidebar'dagi profil kartasi orqali Profil ham ochiladi). Bosh sahifa `/corruption-reports`. Boshqa sahifalar URL orqali ham yopiq. Header'dagi talaba qidiruvi yashirildi.
+- Router endi bitta umumiy `auth.allowedPaths` bilan ishlaydi (rahbar va korrupsiya rejimlari uchun). Eski `LEADER_ALLOWED_PATHS` o'chirildi.
+- Bildirishnomalar: backend ularni faqat egasiga yuboradi, lekin turi bo'yicha filtr yo'q. Frontend `auth.canSeeNotification(target_type)` bilan filtrlaydi: `corruption_report` faqat korrupsiya ruxsati bilan, `appeal` faqat rahbariyat ruxsati bilan, xizmat murojaatlari va umumiy (tizim) bildirishnomalar cheklangan rejimlarda ko'rsatilmaydi. Cheklangan rejimda badge soni backend'ning `unread-count`idan emas, filtrlangan ro'yxatdan (`page_size: 50`) hisoblanadi. Oddiy xodimlar uchun xatti-harakat o'zgarmadi.
+
+**O'zgartirilgan fayllar:**
+- [`src/stores/auth.ts`](src/stores/auth.ts) — `BROAD_PERMISSIONS`, `isCorruptionOnly`, `allowedPaths`, `canSeeNotification()`; `homePath` korrupsiya xodimi uchun `/corruption-reports`.
+- [`src/router/index.ts`](src/router/index.ts) — `allowedPaths` asosidagi cheklov.
+- [`src/components/DashboardLayout.vue`](src/components/DashboardLayout.vue) — korrupsiya xodimi menyusi.
+- [`src/components/AppHeader.vue`](src/components/AppHeader.vue) — talaba qidiruvi korrupsiya xodimida yashirildi.
+- [`src/stores/notifications.ts`](src/stores/notifications.ts) — `loadVisible()`, `notificationTarget()`, cheklangan rejimda badge sonini ro'yxatdan hisoblash.
+
+**Sinov:** `npm run build` xatosiz o'tdi. Brauzerda (sinov sessiyalari Pinia'da, javoblar `XMLHttpRequest` almashtirilib, keyin tozalandi) 4 ta holat tekshirildi, har birida 5 ta aralash bildirishnoma (2 korrupsiya, 1 xizmat murojaati, 1 rahbariyat, 1 tizim):
+- `anticorruption_officer` va `karupsiya`: korrupsiya rejimi, bosh sahifa `/corruption-reports`, faqat 2 ta korrupsiya bildirishnomasi, o'qilmagan 1. Menyu: Korrupsiya xabarlari, Info. `/appeals`, `/statistics`, `/leadership-appeals`, `/staff` → `/corruption-reports` ga qaytarildi, `/info` va `/profile` ochildi. Talaba qidiruvi yo'q.
+- `prorektor`: rahbar rejimi, korrupsiya + rahbariyat bildirishnomalari (3 ta), xizmat va tizim bildirishnomalari yo'q.
+- `operator`: o'zgarishsiz, korrupsiya va rahbariyat bildirishnomalari yashirin.
+Haqiqiy korrupsiya xodimi hisobi bilan jonli sinalmadi.
+
+### 89. Korrupsiya xodimi rahbarga mas'ul bo'lsa ham cheklangan menyu
+Foydalanuvchi skrinshot yubordi: o'z hisobida (BOBOMUROD G'OIBNAZAROV) hamon to'liq menyu (Statistika, Murojaatlar, Ta'lim granti, Aloqa va h.k.) chiqmoqda. Kerakli: faqat korrupsiya, rahbariyat murojaatlari va Info.
+
+**Sabab (bazadan tekshirildi):** hisob endi `prorektor` emas, `karupsiya` rolida (`role_assignments`: faqat `karupsiya`). `/auth/me/` ruxsatlari: `handle_corruption_reports`, `send_bot_messages`, `handle_leadership_appeals`. Oxirgisini backend rahbarga mas'ul (handler) bo'lgani uchun o'zi qo'shadi. 88-banddagi shart `handle_leadership_appeals`ni "keng ruxsat" deb hisoblagani uchun korrupsiya rejimi yoqilmagan, rahbar rejimi ham (`prorektor` yo'q) yoqilmagan va to'liq menyu chiqqan.
+
+**Tuzatish:**
+- [`src/stores/auth.ts`](src/stores/auth.ts) — `BROAD_PERMISSIONS` dan `handle_leadership_appeals` olib tashlandi. Korrupsiya rejimidagi `allowedPaths` ga, rahbariyat ruxsati bo'lsa, `/leadership-appeals` qo'shiladi.
+- [`src/components/DashboardLayout.vue`](src/components/DashboardLayout.vue) — korrupsiya rejimi menyusi: Korrupsiya xabarlari, (ruxsat bo'lsa) Rahbariyat murojaatlari, Info.
+- Bildirishnomalar o'zgarishsiz: `canSeeNotification` `appeal` turini ruxsat bo'yicha allaqachon ko'rsatadi.
+
+**Sinov:** `npm run build` xatosiz o'tdi. Brauzerda aynan shu hisob ruxsatlari bilan (`karupsiya`, uchta ruxsat; sinov sessiyasi, keyin tozalandi): korrupsiya rejimi yoqildi, bosh sahifa `/corruption-reports`. Menyu: Korrupsiya xabarlari, Rahbariyat murojaatlari, Info (+ sidebar'dagi Profil). `/statistics`, `/appeals`, `/grant`, `/contacts`, `/anti-corruption` → `/corruption-reports` ga qaytarildi, `/leadership-appeals` va `/info` ochildi. Bildirishnomalardan faqat korrupsiya va rahbariyat qoldi (xizmat murojaati va tizim xabari yashirildi). Foydalanuvchining o'z brauzerida sessiya yangilanishi uchun sahifani yangilash (F5) kerak.
+
+### 90. Korrupsiya xodimi menyusidan rahbariyat murojaatlari ham olib tashlandi
+89-banddan keyin foydalanuvchi skrinshot yubordi: menyuda "Rahbariyat murojaatlari" qolgan, u esa bo'lmasligi kerak. 88-banddagi "korrupsiya va murojaatlar" so'zini men rahbariyat murojaatlari deb noto'g'ri tushungan edim. To'g'risi: korrupsiya xodimiga faqat korrupsiya xabarlari va Info.
+
+**O'zgartirilgan fayllar:**
+- [`src/stores/auth.ts`](src/stores/auth.ts) — korrupsiya rejimida `allowedPaths` faqat `/corruption-reports`, `/info`, `/profile` (`/leadership-appeals` olib tashlandi). `canSeeNotification()` korrupsiya rejimida faqat `corruption_report` ni ko'rsatadi (`appeal` ham yashiriladi).
+- [`src/components/DashboardLayout.vue`](src/components/DashboardLayout.vue) — korrupsiya rejimi menyusi: Korrupsiya xabarlari, Info.
+
+**Eslatma:** backend `handle_leadership_appeals` ruxsatini hamon beradi (hisob rahbarga mas'ul sifatida biriktirilgan), ya'ni API darajasida bu hisob rahbariyat murojaatlarini olishi mumkin. Frontendda bu sahifa va uning bildirishnomalari yopildi. To'liq ajratish uchun hisobni Rahbariyat murojaatlari → "Rahbarlar" tabida mas'ullar ro'yxatidan olib tashlash kerak.
+
+**Sinov:** `npm run build` xatosiz o'tdi. Brauzerda shu hisob ruxsatlari bilan (`karupsiya` + `handle_corruption_reports`, `send_bot_messages`, `handle_leadership_appeals`; sinov sessiyasi, keyin tozalandi): menyu Korrupsiya xabarlari va Info (+ sidebar'dagi Profil), `/leadership-appeals`, `/appeals`, `/statistics` → `/corruption-reports`, `/info` ochildi, 4 ta aralash bildirishnomadan faqat korrupsiya bildirishnomasi qoldi (o'qilmagan 1).
+
+### 91. Korrupsiya xodimi menyusiga "Korrupsiyaga qarshi kurashish" bo'limi qaytarildi
+Foydalanuvchi: korrupsiya xodimida 71-bandda qilingan statik "Korrupsiyaga qarshi kurashish" sahifasi (`/anti-corruption`) ham bo'lishi kerak.
+
+**O'zgartirilgan fayllar:**
+- [`src/stores/auth.ts`](src/stores/auth.ts) — korrupsiya rejimidagi `allowedPaths` ga `/anti-corruption` qo'shildi.
+- [`src/components/DashboardLayout.vue`](src/components/DashboardLayout.vue) — korrupsiya rejimi menyusi: Korrupsiya xabarlari, Korrupsiyaga qarshi kurashish, Info.
+
+**Sinov:** `npm run build` xatosiz o'tdi. Brauzerda `karupsiya` hisobi ruxsatlari bilan (sinov sessiyasi, keyin tozalandi): menyuda uchala band (+ sidebar'dagi Profil), `/anti-corruption` ochildi ("Korrupsiyaga qarshi kurashish" sarlavhasi), `/leadership-appeals` hamon `/corruption-reports` ga qaytaradi.
+
+---
+
 ## Qoida
 Bundan keyingi har bir o'zgarishda ushbu faylga yangi sana ostida: nima qilingani, sababi va o'zgartirilgan fayllar ro'yxati qo'shiladi.

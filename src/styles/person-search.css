@@ -1,0 +1,197 @@
+/* Shaxs qidiruv paneli (PersonSearchDrawer) va "Shaxsni qidirish" tugmasi.
+ * Ranglar --dash-* tokenlaridan olinadi — yorug'/qorong'i tema avtomatik. */
+
+.person-search-open {
+  align-self: flex-start;
+  white-space: nowrap;
+}
+
+.person-drawer-root {
+  position: fixed;
+  inset: 0;
+  /* Test-rejim bannerdan (z-index 1300) yuqorida turishi uchun. */
+  z-index: 2000;
+}
+
+.person-drawer-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 11, 30, 0.45);
+}
+
+.person-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(460px, 100vw);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 18px 16px;
+  background: var(--dash-surface);
+  border-left: 1px solid var(--dash-border);
+  box-shadow: -12px 0 32px rgba(2, 11, 30, 0.18);
+  color: var(--dash-text-primary);
+  animation: personDrawerIn 0.22s ease-out;
+}
+
+@keyframes personDrawerIn {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.person-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.person-drawer-head h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.person-drawer-close {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--dash-border-soft);
+  border-radius: 10px;
+  background: var(--dash-surface-soft);
+  color: var(--dash-text-secondary);
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.person-drawer-close:hover {
+  color: var(--dash-red);
+  border-color: var(--dash-red);
+}
+
+.person-drawer-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--dash-border-soft);
+  border-radius: 12px;
+  background: var(--dash-surface-soft);
+}
+
+.person-drawer-tab {
+  flex: 1;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--dash-text-secondary);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.person-drawer-tab.active {
+  background: var(--dash-blue);
+  color: #fff;
+}
+
+.person-drawer-input {
+  width: 100%;
+}
+
+.person-drawer-hint {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--dash-text-muted);
+}
+
+.person-drawer-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 2px;
+}
+
+.person-drawer-status {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--dash-surface-soft);
+  color: var(--dash-text-secondary);
+  font-size: 0.9rem;
+}
+
+.person-drawer-error {
+  color: var(--dash-orange);
+}
+
+.person-staff-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.person-staff-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--dash-border-soft);
+  border-radius: 12px;
+  background: var(--dash-surface-soft);
+}
+
+.person-staff-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 0.88rem;
+  color: var(--dash-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.person-staff-badge {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--dash-surface-soft);
+  color: var(--dash-text-secondary);
+}
+
+.person-staff-badge.is-in-system {
+  background: rgba(31, 169, 113, 0.14);
+  color: #137a50;
+}
+
+.person-staff-info strong {
+  color: var(--dash-text-primary);
+  font-size: 0.95rem;
+}
+
+@media (max-width: 640px) {
+  .person-drawer {
+    width: 100vw;
+    padding: 14px 14px 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .person-drawer {
+    animation: none;
+  }
+}

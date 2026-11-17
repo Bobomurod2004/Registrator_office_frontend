@@ -14,6 +14,8 @@ type IconName =
   | 'contacts'
   | 'audit'
   | 'anticorruption'
+  | 'leadership'
+  | 'reports'
 
 interface MenuLink {
   to: string
@@ -32,7 +34,7 @@ const profileRole = computed(() =>
 const profileInitial = computed(() => profileName.value.charAt(0).toUpperCase())
 const profileImageUrl = computed(() => authStore.session?.imageUrl ?? null)
 
-const menuLinks = computed<MenuLink[]>(() =>
+const baseMenuLinks = computed<MenuLink[]>(() =>
   authStore.isStaff
     ? [
         { to: '/statistics', label: m.value.menu.statistics, icon: 'stats' },
@@ -56,6 +58,28 @@ const menuLinks = computed<MenuLink[]>(() =>
         { to: '/anti-corruption', label: m.value.menu.antiCorruption, icon: 'anticorruption' },
       ],
 )
+
+/** "Rahbariyat murojaatlari" — ruxsat backend tomonidan hisoblanadi (mas'ul yoki SuperAdmin). */
+const menuLinks = computed<MenuLink[]>(() => {
+  // Rahbar rejimi: faqat rahbariyat murojaatlari va Ma'lumotlar (qolganlari yashirin).
+  const leadership: MenuLink = { to: '/leadership-appeals', label: m.value.leadership.menuLabel, icon: 'leadership' }
+  // Korrupsiya xabarlari — `handle_corruption_reports` ruxsati bilan (SuperAdmin avtomatik olmaydi).
+  const corruption: MenuLink[] = authStore.can('handle_corruption_reports')
+    ? [{ to: '/corruption-reports', label: m.value.corruption.menuLabel, icon: 'reports' }]
+    : []
+  const info: MenuLink = { to: '/info', label: m.value.menu.info, icon: 'info' }
+  if (authStore.isLeaderOnly) return [leadership, ...corruption, info]
+  // Korrupsiya xodimi: korrupsiya xabarlari, "Korrupsiyaga qarshi kurashish" bo'limi va Ma'lumotlar.
+  if (authStore.isCorruptionOnly) {
+    return [
+      ...corruption,
+      { to: '/anti-corruption', label: m.value.menu.antiCorruption, icon: 'anticorruption' },
+      info,
+    ]
+  }
+  const extra = authStore.can('handle_leadership_appeals') ? [leadership] : []
+  return [...baseMenuLinks.value, ...extra, ...corruption]
+})
 
 onMounted(closeMobileMenu)
 </script>
@@ -127,6 +151,14 @@ onMounted(closeMobileMenu)
                 <svg v-else-if="link.icon === 'audit'" viewBox="0 0 24 24" role="presentation">
                   <path
                     d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Zm-1.2 13.2L7 11.4l1.4-1.4 2.4 2.4 4.8-4.8L17 9l-6.2 6.2Z"
+                  />
+                </svg>
+                <svg v-else-if="link.icon === 'leadership'" viewBox="0 0 24 24" role="presentation">
+                  <path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5L3 8Zm2 13h14v1H5v-1Z" />
+                </svg>
+                <svg v-else-if="link.icon === 'reports'" viewBox="0 0 24 24" role="presentation">
+                  <path
+                    d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm8 1.5V8h4.5L14 3.5ZM12 10a3 3 0 0 0-3 3v1H8v5h8v-5h-1v-1a3 3 0 0 0-3-3Zm0 1.5a1.5 1.5 0 0 1 1.5 1.5v1h-3v-1a1.5 1.5 0 0 1 1.5-1.5Z"
                   />
                 </svg>
                 <svg v-else-if="link.icon === 'anticorruption'" viewBox="0 0 24 24" role="presentation">

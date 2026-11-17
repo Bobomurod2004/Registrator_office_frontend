@@ -16,6 +16,8 @@ export interface UserSession {
    * endpointlar uchun primary rol bo'lib qoladi. */
   roleCodes: string[]
   permissionCodes: string[]
+  /** `true` bo'lsa `permissionCodes` backend'dan to'g'ridan-to'g'ri kelgan samarali ro'yxat. */
+  permissionsExplicit?: boolean
   /** Backend qaytargan active assignmentlar; sessiyani yangilagandan keyin
    * navigatsiya bitta primary rolga bog'lanib qolmasligi uchun saqlanadi. */
   roleAssignments: UserRoleAssignment[]
@@ -36,6 +38,31 @@ export interface UserSession {
  * qiymatlar faqat taqqoslash uchun ishlatiladigan ma'lum kodlar.
  */
 export type BackendRole = string
+
+/**
+ * Rahbariyat rollarining kodlari. Bu rol egalari faqat "Rahbariyat murojaatlari"
+ * va "Ma'lumotlar" bo'limini ko'radi, bosh sahifa ham shu bo'lim bo'ladi.
+ * MUHIM: aniq rol kodi backend jamoasidan tasdiqlangach shu yerga yoziladi
+ * (masalan `'leader'`). Ro'yxat bo'sh bo'lsa rahbar rejimi yoqilmaydi.
+ */
+export const LEADER_ROLE_CODES: string[] = ['prorektor']
+
+/**
+ * Bulardan birortasi bo'lsa foydalanuvchi korrupsiya rejimiga tushmaydi: u tizimni
+ * boshqaradi. `send_bot_messages` va `handle_leadership_appeals` bu ro'yxatda yo'q —
+ * korrupsiya xodimi rahbarga mas'ul ham bo'lishi mumkin (backend buni o'zi beradi).
+ */
+const BROAD_PERMISSIONS = [
+  'manage_appeal_recipients',
+  'manage_users',
+  'manage_roles',
+  'manage_settings',
+  'manage_departments',
+  'manage_services',
+  'manage_content',
+  'dispatch_requests',
+  'view_audit_log',
+]
 
 /** `role_assignments` serializeri eski/yangi backend versiyalarida role'ni
  * ID yoki ichma-ich obyekt ko'rinishida qaytarishi mumkin. Shu ikki shaklni
@@ -74,6 +101,10 @@ export interface BackendUser {
   role_assignments?: unknown[]
   is_super_admin?: boolean
   is_student?: boolean
+  /** Samarali ruxsatlar ro'yxati (login va /auth/me/ javobida). Backend uni
+   * o'zi hisoblaydi (SuperAdmin istisnolari hisobga olingan). Mavjud bo'lsa,
+   * ruxsatlar faqat shu ro'yxatga qarab aniqlanadi. */
+  permissions?: string[]
 }
 
 /** GET/PATCH /api/v1/auth/me/ to'liq javob shakli. */
@@ -169,6 +200,27 @@ function activeAssignments(user: BackendUser): UserRoleAssignment[] {
   }]
 }
 
+/**
+ * Ruxsatlar: backend `permissions` ro'yxatini qaytarsa (samarali, SuperAdmin
+ * istisnolari bilan) — u haqiqat manbai. Aks holda (eski javoblar) assignment
+ * ruxsatlaridan yig'iladi.
+ */
+function resolvePermissions(
+  user: BackendUser,
+  roleAssignments: UserRoleAssignment[],
+): { permissionCodes: string[]; permissionsExplicit: boolean } {
+  if (Array.isArray(user.permissions)) {
+    return {
+      permissionCodes: [...new Set(user.permissions.map(String).filter(Boolean))],
+      permissionsExplicit: true,
+    }
+  }
+  return {
+    permissionCodes: [...new Set(roleAssignments.flatMap((assignment) => assignment.permissions))],
+    permissionsExplicit: false,
+  }
+}
+
 function toSession(
   user: BackendUser,
   accessToken: string,
@@ -177,7 +229,7 @@ function toSession(
 ): UserSession {
   const roleAssignments = activeAssignments(user)
   const roleCodes = [...new Set(roleAssignments.map((assignment) => assignment.role_code).filter(Boolean))]
-  const permissionCodes = [...new Set(roleAssignments.flatMap((assignment) => assignment.permissions))]
+  const { permissionCodes, permissionsExplicit } = resolvePermissions(user, roleAssignments)
   return {
     id: String(user.id),
     name: user.full_name || user.hemis_id,
@@ -186,6 +238,7 @@ function toSession(
     roleCode: user.role_code,
     roleCodes,
     permissionCodes,
+    permissionsExplicit,
     roleAssignments,
     isSuperAdmin: user.is_super_admin === true || roleCodes.includes('super_admin'),
     kind: resolveKind(user, method),
@@ -248,8 +301,10 @@ export const useAuthStore = defineStore('auth', () => {
    * cheklanmaydi.
    */
   function can(permission: string): boolean {
-    if (isSuperAdmin.value) return true
-    return session.value?.permissionCodes.includes(permission) === true
+    if (session.value?.permissionCodes.includes(permission)) return true
+    // Backend samarali ro'yxat yubormagan (eski javob) bo'lsa, SuperAdmin
+    // hamma narsaga ruxsatli deb olinadi; ro'yxat bo'lsa, u haqiqat manbai.
+    return isSuperAdmin.value && session.value?.permissionsExplicit !== true
   }
 
   const canManageUsers = computed(() =>
@@ -262,7 +317,45 @@ export const useAuthStore = defineStore('auth', () => {
   const isAdmin = computed(() =>
     canManageUsers.value,
   )
-  const homePath = computed(() => (isStaff.value ? '/statistics' : '/services'))
+  /** Faqat rahbariyat roli (SuperAdmin bundan mustasno): menyu va sahifalar cheklanadi. */
+  const isLeaderOnly = computed(() =>
+    !isSuperAdmin.value &&
+    (session.value?.roleCodes ?? []).some((code) => LEADER_ROLE_CODES.includes(code)),
+  )
+  /**
+   * Faqat korrupsiya xodimi (masalan `anticorruption_officer`): korrupsiya ruxsati bor,
+   * rahbariyat murojaatlari va boshqaruv ruxsatlari yo'q. Menyu, sahifalar va
+   * bildirishnomalar faqat korrupsiya xabarlari (va Info) bilan cheklanadi.
+   */
+  const isCorruptionOnly = computed(() =>
+    !isSuperAdmin.value &&
+    !isLeaderOnly.value &&
+    can('handle_corruption_reports') &&
+    !BROAD_PERMISSIONS.some((code) => can(code)),
+  )
+  /** Cheklangan rejimda ochiq yo'llar; `null` — cheklov yo'q. */
+  const allowedPaths = computed<string[] | null>(() => {
+    if (isLeaderOnly.value) return ['/leadership-appeals', '/corruption-reports', '/info', '/profile']
+    // Korrupsiya xodimi rahbarga mas'ul bo'lsa ham rahbariyat murojaatlari ochilmaydi.
+    if (isCorruptionOnly.value) return ['/corruption-reports', '/anti-corruption', '/info', '/profile']
+    return null
+  })
+
+  /** Bildirishnoma shu foydalanuvchiga tegishlimi (sahifasiga kira oladimi). */
+  function canSeeNotification(targetType: string | null): boolean {
+    if (targetType === 'corruption_report') return can('handle_corruption_reports')
+    // Korrupsiya xodimiga faqat korrupsiya bildirishnomalari.
+    if (isCorruptionOnly.value) return false
+    if (targetType === 'appeal') return can('handle_leadership_appeals')
+    // Cheklangan rejimda xizmat murojaatlari va umumiy (tizim) bildirishnomalar ko'rsatilmaydi.
+    return allowedPaths.value === null
+  }
+
+  const homePath = computed(() => {
+    if (isLeaderOnly.value) return '/leadership-appeals'
+    if (isCorruptionOnly.value) return '/corruption-reports'
+    return isStaff.value ? '/statistics' : '/services'
+  })
 
   function persist(value: UserSession | null) {
     session.value = value
@@ -280,7 +373,7 @@ export const useAuthStore = defineStore('auth', () => {
       roleId: user.role,
       roleCode: user.role_code,
       roleCodes: activeAssignments(user).map((assignment) => assignment.role_code).filter(Boolean),
-      permissionCodes: activeAssignments(user).flatMap((assignment) => assignment.permissions),
+      ...resolvePermissions(user, activeAssignments(user)),
       roleAssignments: activeAssignments(user),
       isSuperAdmin: user.is_super_admin === true || activeAssignments(user).some((assignment) => assignment.role_code === 'super_admin'),
       kind: resolveKind(user, session.value.method === 'demo' ? 'staff' : session.value.method),
@@ -468,6 +561,10 @@ export const useAuthStore = defineStore('auth', () => {
     canManageUsers,
     canDispatchRequests,
     homePath,
+    isLeaderOnly,
+    isCorruptionOnly,
+    allowedPaths,
+    canSeeNotification,
     loginWithPassword,
     beginLogin,
     handleCallback,

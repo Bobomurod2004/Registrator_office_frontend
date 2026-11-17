@@ -1,0 +1,206 @@
+/* Rahbariyat murojaatlari — ikki panelli ko'rinish (chapda ro'yxat, o'ngda tafsilot).
+ * Ranglar --dash-* tokenlaridan olinadi: yorug'/qorong'i tema avtomatik. */
+
+.lap-split {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .lap-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.lap-pane {
+  min-width: 0;
+  background: var(--dash-surface);
+  border: 1px solid var(--dash-border-soft);
+  border-radius: 16px;
+}
+
+.lap-pane-list {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.lap-list {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 340px);
+  min-height: 240px;
+  overflow-y: auto;
+}
+
+@media (max-width: 900px) {
+  .lap-list {
+    max-height: 50vh;
+  }
+}
+
+.lap-list-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--dash-border-soft);
+  background: transparent;
+  color: var(--dash-text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.lap-list-item:hover {
+  background: var(--dash-surface-soft);
+}
+
+.lap-list-item.is-selected {
+  background: rgba(47, 109, 255, 0.08);
+}
+
+.lap-list-item.is-selected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--dash-blue);
+}
+
+.lap-list-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.lap-list-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.lap-list-meta {
+  font-size: 12.5px;
+  color: var(--dash-text-muted);
+}
+
+.lap-pane-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  min-height: 320px;
+}
+
+.lap-empty-pane {
+  margin: auto;
+  padding: 40px 12px;
+  color: var(--dash-text-muted);
+  text-align: center;
+}
+
+.lap-d-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.lap-d-title {
+  margin: 4px 0 2px;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.lap-track {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 14px;
+  list-style: none;
+  border: 1px solid var(--dash-border-soft);
+  border-radius: 12px;
+  background: var(--dash-surface-soft);
+}
+
+.lap-track-step {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--dash-text-muted);
+}
+
+.lap-track-step + .lap-track-step::before {
+  content: '';
+  position: absolute;
+  top: 13px;
+  left: -50%;
+  right: 50%;
+  height: 3px;
+  background: var(--dash-border-soft);
+}
+
+.lap-track-step + .lap-track-step.is-done::before {
+  background: #1fa971;
+}
+
+.lap-track-dot {
+  position: relative;
+  z-index: 1;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--dash-border-soft);
+  border-radius: 50%;
+  background: var(--dash-surface);
+  font-weight: 700;
+}
+
+.lap-track-step.is-done .lap-track-dot {
+  background: #1fa971;
+  border-color: #1fa971;
+  color: #fff;
+}
+
+.lap-track-step.is-current .lap-track-dot {
+  border: 3px solid var(--dash-blue);
+}
+
+.lap-track-step.is-done .lap-track-label,
+.lap-track-step.is-current .lap-track-label {
+  color: var(--dash-text-primary);
+  font-weight: 600;
+}
+
+.lap-block-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.lap-rule {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(47, 109, 255, 0.08);
+  color: var(--dash-blue);
+  font-size: 13px;
+  font-weight: 600;
+}

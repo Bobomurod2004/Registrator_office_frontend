@@ -75,6 +75,20 @@ const routes = [
     meta: { requiresAuth: true },
   },
   {
+    // Rahbariyatga murojaatlar — kimga ko'rinishi backend ruxsati bilan belgilanadi
+    // (mas'ul xodim yoki SuperAdmin). Ruxsatsiz manzilga kirilsa bosh sahifaga qaytariladi.
+    path: '/leadership-appeals',
+    name: 'leadership-appeals',
+    component: () => import('@/views/leadership-appeals.vue'),
+    meta: { requiresAuth: true, permission: 'handle_leadership_appeals' },
+  },
+  {
+    path: '/corruption-reports',
+    name: 'corruption-reports',
+    component: () => import('@/views/corruption-reports.vue'),
+    meta: { requiresAuth: true, permission: 'handle_corruption_reports' },
+  },
+  {
     path: '/profile',
     name: 'profile',
     component: () => import('@/views/profile.vue'),
@@ -99,11 +113,18 @@ export const router = createRouter({
   routes,
 })
 
+
 router.beforeEach((to) => {
   const auth = useAuthStore()
 
   if (to.meta.requiresAuth && !auth.isAuthenticated) {
     return { name: 'login' }
+  }
+
+  // Rahbar va korrupsiya xodimi rejimlarida faqat ruxsat etilgan sahifalar ochiladi (URL orqali ham).
+  const allowed = auth.allowedPaths
+  if (to.meta.requiresAuth && allowed && !allowed.includes(to.path)) {
+    return { path: auth.homePath }
   }
 
   if (to.meta.guestOnly && auth.isAuthenticated) {
@@ -119,6 +140,10 @@ router.beforeEach((to) => {
   }
 
   if (to.meta.superAdminOnly && !auth.isSuperAdmin) {
+    return { path: auth.homePath }
+  }
+
+  if (to.meta.permission && !auth.can(String(to.meta.permission))) {
     return { path: auth.homePath }
   }
 

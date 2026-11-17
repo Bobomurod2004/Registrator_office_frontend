@@ -4,6 +4,8 @@ import { pinia } from './stores'
 import { router } from './router'
 import 'bootstrap/dist/css/bootstrap.min.css'
 import './style.css'
+import './styles/leadership.css'
+import './styles/person-search.css'
 
 const app = createApp(App)
 

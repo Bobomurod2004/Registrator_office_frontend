@@ -7,6 +7,7 @@ import { useNotificationsStore, type AppNotification } from '@/stores/notificati
 import type { Locale } from '@/i18n/messages'
 import FlagIcon from '@/components/FlagIcon.vue'
 import AppLogo from '@/components/AppLogo.vue'
+import StudentSearchItem from '@/components/StudentSearchItem.vue'
 import { toggleMobileMenu } from '@/composables/mobileNav'
 import { searchStudents, type StudentSearchResult } from '@/services/hemisLookup'
 import { formatDateTime } from '@/utils/formatDate'
@@ -23,7 +24,8 @@ const authStore = useAuthStore()
 const localeStore = useLocaleStore()
 const notificationsStore = useNotificationsStore()
 const m = computed(() => localeStore.m)
-const showSearch = computed(() => route.name !== 'login' && authStore.isStaff)
+// Korrupsiya xodimi uchun talaba qidiruvi kerak emas (faqat o'z bo'limi ishi).
+const showSearch = computed(() => route.name !== 'login' && authStore.isStaff && !authStore.isCorruptionOnly)
 
 /* Xodim talabani ism/familiya/HEMIS ID bo'yicha qidirishi mumkin
  * (GET /api/v1/hemis/students/search/) — avval bazadan, topilmasa (yoki
@@ -40,66 +42,6 @@ let searchDebounce: number | undefined
 
 function toggleStudent(hemisId: string) {
   expandedHemisId.value = expandedHemisId.value === hemisId ? null : hemisId
-}
-
-function formatBirthDate(value: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value)
-  return match ? `${match[3]}.${match[2]}.${match[1]}` : value
-}
-
-/** Qidiruv javobidagi barcha maydonlar bo'limlarga ajratiladi; bo'sh qiymatlar ko'rsatilmaydi.
- * Fakultet/kurs/guruh qisqa qatorning o'zida bo'lgani uchun bu yerda takrorlanmaydi. */
-function studentDetailGroups(s: StudentSearchResult) {
-  const d = m.value.header.studentDetail
-  const groups: Array<{ title: string; items: Array<[string, string | number | null]> }> = [
-    {
-      title: d.personal,
-      items: [
-        [d.birthDate, s.birthDate ? formatBirthDate(s.birthDate) : ''],
-        [d.gender, s.genderName],
-        [d.phone, s.phone],
-        [d.email, s.email],
-      ],
-    },
-    {
-      title: d.academic,
-      items: [
-        [d.specialty, s.specialtyCode ? `${s.specialty} (${s.specialtyCode})` : s.specialty],
-        [d.semester, s.semester],
-        [d.educationYear, s.educationYear],
-        [d.gpa, s.gpa],
-        [d.avgGrade, s.avgGrade],
-        [d.totalCredit, s.totalCredit],
-        [d.status, s.studentStatus],
-      ],
-    },
-    {
-      title: d.education,
-      items: [
-        [d.educationType, s.educationType],
-        [d.educationForm, s.educationForm],
-        [d.educationLang, s.educationLang],
-        [d.paymentForm, s.paymentForm],
-      ],
-    },
-    {
-      title: d.address,
-      items: [
-        [d.province, s.province],
-        [d.district, s.district],
-        [d.accommodation, s.accommodation],
-        [d.dormitory, s.hasDormitory ? m.value.profile.yes : m.value.profile.no],
-      ],
-    },
-  ]
-  return groups
-    .map((g) => ({
-      title: g.title,
-      items: g.items
-        .filter(([, value]) => value !== null && value !== '')
-        .map(([label, value]) => ({ label, value: String(value) })),
-    }))
-    .filter((g) => g.items.length)
 }
 
 async function runStudentSearch(source?: 'hemis') {
@@ -161,7 +103,16 @@ function toggleNotifDropdown() {
 async function openNotification(item: AppNotification) {
   isNotifOpen.value = false
   if (!item.is_read) await notificationsStore.markRead(item.id)
-  if (item.request) void router.push({ name: 'appeals', query: { request: String(item.request) } })
+  // Sahifa target_type bo'yicha tanlanadi; `request` faqat eski bildirishnomalar uchun zaxira.
+  const targetType = item.target_type ?? (item.request ? 'request' : null)
+  const targetId = item.target_id ?? item.request
+  if (targetType === 'request' && targetId) {
+    void router.push({ name: 'appeals', query: { request: String(targetId) } })
+  } else if (targetType === 'appeal' && targetId) {
+    void router.push({ name: 'leadership-appeals', query: { appeal: String(targetId) } })
+  } else if (targetType === 'corruption_report' && targetId) {
+    void router.push({ name: 'corruption-reports', query: { report: String(targetId) } })
+  }
 }
 
 function markAllNotificationsRead() {
@@ -312,50 +263,13 @@ onBeforeUnmount(() => {
             <p v-else-if="searchError" class="app-search-status app-search-error">{{ searchError }}</p>
             <template v-else-if="searchResults.length">
               <p v-if="searchTruncated" class="app-search-status">{{ m.header.tooManyResults }}</p>
-              <div v-for="student in searchResults" :key="student.hemisId" class="app-search-student">
-                <button
-                  type="button"
-                  class="app-search-student-summary"
-                  :aria-expanded="expandedHemisId === student.hemisId"
-                  @click="toggleStudent(student.hemisId)"
-                >
-                  <img v-if="student.photoUrl" class="app-search-avatar" :src="student.photoUrl" alt="" />
-                  <span v-else class="app-search-avatar app-search-avatar-fallback">
-                    {{ (student.fullName || '?').charAt(0).toUpperCase() }}
-                  </span>
-                  <span class="app-search-student-info">
-                    <strong>
-                      {{ student.fullName || student.hemisId }}
-                      <span v-if="!student.inSystem" class="app-search-not-in-system">{{ m.header.notInSystem }}</span>
-                    </strong>
-                    <span>{{ m.settings.hemisId }}: {{ student.hemisId }}</span>
-                    <span v-if="student.faculty">{{ m.profile.studentFields.faculty }}: {{ student.faculty }}</span>
-                    <span v-if="student.course || student.group">
-                      {{ m.profile.studentFields.course }}: {{ student.course }}
-                      <template v-if="student.group"> · {{ m.profile.studentFields.group }}: {{ student.group }}</template>
-                    </span>
-                  </span>
-                  <svg
-                    class="app-search-chevron"
-                    :class="{ open: expandedHemisId === student.hemisId }"
-                    viewBox="0 0 24 24"
-                  >
-                    <polyline points="6 9 12 15 18 9" />
-                  </svg>
-                </button>
-
-                <div v-if="expandedHemisId === student.hemisId" class="app-search-details">
-                  <section v-for="group in studentDetailGroups(student)" :key="group.title" class="app-search-detail-group">
-                    <h4>{{ group.title }}</h4>
-                    <dl>
-                      <template v-for="item in group.items" :key="item.label">
-                        <dt>{{ item.label }}</dt>
-                        <dd>{{ item.value }}</dd>
-                      </template>
-                    </dl>
-                  </section>
-                </div>
-              </div>
+              <StudentSearchItem
+                v-for="student in searchResults"
+                :key="student.hemisId"
+                :student="student"
+                :expanded="expandedHemisId === student.hemisId"
+                @toggle="toggleStudent(student.hemisId)"
+              />
               <button
                 v-if="searchSource === 'local'"
                 type="button"

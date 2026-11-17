@@ -1,0 +1,240 @@
+/* Korrupsiya xabarlari — rahbariyat murojaatlarining `.lap-*` asosiga qo'shimcha.
+ * Rangli holatlar ikki temada ham 4.5:1 kontrastda tanlangan. */
+
+.cr-status {
+  --cr-c: #475569;
+  --cr-bg: rgba(100, 116, 139, 0.14);
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--cr-c);
+  background: var(--cr-bg);
+}
+
+.cr-status.is-new { --cr-c: #2457d6; --cr-bg: rgba(47, 109, 255, 0.12); }
+.cr-status.is-under_review { --cr-c: #9a5600; --cr-bg: rgba(240, 144, 10, 0.16); }
+.cr-status.is-investigating { --cr-c: #6528d6; --cr-bg: rgba(124, 61, 255, 0.12); }
+.cr-status.is-confirmed { --cr-c: #b3263f; --cr-bg: rgba(224, 64, 90, 0.12); }
+.cr-status.is-not_confirmed { --cr-c: #0f7a51; --cr-bg: rgba(23, 184, 120, 0.14); }
+.cr-status.is-rejected { --cr-c: #475569; --cr-bg: rgba(100, 116, 139, 0.16); }
+
+/* Yakuniy bosqich nuqtasi xulosa rangini oladi. */
+.cr-track.is-final-confirmed .lap-track-step:last-child .lap-track-dot { background: #c2334c; border-color: #c2334c; }
+.cr-track.is-final-not_confirmed .lap-track-step:last-child .lap-track-dot { background: #13805a; border-color: #13805a; }
+.cr-track.is-final-rejected .lap-track-step:last-child .lap-track-dot { background: #64748b; border-color: #64748b; }
+
+.cr-privacy {
+  --cr-c: #2457d6;
+  --cr-bg: rgba(47, 109, 255, 0.08);
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: 12px;
+  color: var(--cr-c);
+  background: var(--cr-bg);
+  border: 1px solid var(--cr-bg);
+}
+
+.cr-privacy svg { flex: none; margin-top: 1px; }
+.cr-privacy div { display: flex; flex-direction: column; gap: 2px; }
+.cr-privacy strong { font-size: 14px; }
+.cr-privacy span { font-size: 13px; line-height: 1.5; }
+.cr-privacy.is-anonymous { --cr-c: #6528d6; --cr-bg: rgba(124, 61, 255, 0.09); }
+.cr-privacy.is-confidential { --cr-c: #9a5600; --cr-bg: rgba(240, 144, 10, 0.11); }
+
+.cr-box {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--dash-surface-soft);
+  border: 1px solid var(--dash-border-soft);
+}
+
+.cr-review {
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid var(--dash-border-soft);
+  background: var(--dash-surface-soft);
+}
+
+.cr-outcome-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.cr-outcomes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .cr-outcomes { grid-template-columns: minmax(0, 1fr); }
+}
+
+.cr-outcome {
+  --cr-c: #475569;
+  --cr-bg: rgba(100, 116, 139, 0.12);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 64px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--dash-border-soft);
+  background: var(--dash-surface);
+  color: var(--cr-c);
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.cr-outcome strong { font-size: 14px; }
+.cr-outcome span { font-size: 12px; font-weight: 500; color: var(--dash-text-secondary); }
+.cr-outcome:hover:not(:disabled) { background: var(--cr-bg); }
+.cr-outcome.is-active { background: var(--cr-bg); border: 2px solid var(--cr-c); }
+.cr-outcome:disabled { cursor: default; }
+.cr-outcome.is-confirmed { --cr-c: #b3263f; --cr-bg: rgba(224, 64, 90, 0.1); }
+.cr-outcome.is-not_confirmed { --cr-c: #0f7a51; --cr-bg: rgba(23, 184, 120, 0.12); }
+.cr-outcome.is-rejected { --cr-c: #475569; --cr-bg: rgba(100, 116, 139, 0.12); }
+
+.cr-assign {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--dash-border-soft);
+}
+
+.cr-officers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cr-officers li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--dash-border-soft);
+  background: var(--dash-surface);
+}
+
+.cr-officer-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  color: var(--dash-text-primary);
+  font-size: 13px;
+}
+
+.cr-note.is-status_change,
+.cr-note.is-assignment { border-left: 3px solid var(--dash-blue); }
+.cr-note.is-response { border-left: 3px solid #13805a; }
+
+.cr-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 720px) {
+  .cr-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.cr-summary-card {
+  --cr-c: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--dash-surface);
+  border: 1px solid var(--dash-border-soft);
+}
+
+.cr-summary-card.is-new { --cr-c: var(--dash-blue); }
+.cr-summary-card.is-under_review { --cr-c: var(--dash-orange); }
+.cr-summary-card.is-investigating { --cr-c: var(--dash-purple); }
+
+.cr-summary-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--cr-c);
+}
+
+.cr-summary-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--dash-text-secondary);
+}
+
+.cr-summary-text strong {
+  font-size: 22px;
+  color: var(--dash-text-primary);
+}
+
+.cr-anon-tag { font-weight: 600; }
+.cr-anon-tag.is-anonymous { color: #6528d6; }
+.cr-anon-tag.is-confidential { color: #9a5600; }
+
+.cr-list-note {
+  margin: 0;
+  padding: 10px 14px 14px;
+  font-size: 12px;
+  color: var(--dash-text-muted);
+}
+
+/* --- Qorong'i tema --- */
+:root[data-theme='dark'] .cr-status.is-new,
+:root[data-theme='dark'] .cr-privacy { --cr-c: #7fa7ff; }
+:root[data-theme='dark'] .cr-status.is-under_review,
+:root[data-theme='dark'] .cr-privacy.is-confidential,
+:root[data-theme='dark'] .cr-anon-tag.is-confidential { --cr-c: #f5b04e; color: #f5b04e; }
+:root[data-theme='dark'] .cr-status.is-investigating,
+:root[data-theme='dark'] .cr-privacy.is-anonymous,
+:root[data-theme='dark'] .cr-anon-tag.is-anonymous { --cr-c: #b99bff; color: #b99bff; }
+:root[data-theme='dark'] .cr-status.is-confirmed,
+:root[data-theme='dark'] .cr-outcome.is-confirmed { --cr-c: #ff8a9a; }
+:root[data-theme='dark'] .cr-status.is-not_confirmed,
+:root[data-theme='dark'] .cr-outcome.is-not_confirmed { --cr-c: #5fd3a6; }
+:root[data-theme='dark'] .cr-status.is-rejected,
+:root[data-theme='dark'] .cr-outcome.is-rejected { --cr-c: #b4c0d0; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .cr-status.is-new,
+  :root:not([data-theme='light']) .cr-privacy { --cr-c: #7fa7ff; }
+  :root:not([data-theme='light']) .cr-status.is-under_review,
+  :root:not([data-theme='light']) .cr-privacy.is-confidential,
+  :root:not([data-theme='light']) .cr-anon-tag.is-confidential { --cr-c: #f5b04e; color: #f5b04e; }
+  :root:not([data-theme='light']) .cr-status.is-investigating,
+  :root:not([data-theme='light']) .cr-privacy.is-anonymous,
+  :root:not([data-theme='light']) .cr-anon-tag.is-anonymous { --cr-c: #b99bff; color: #b99bff; }
+  :root:not([data-theme='light']) .cr-status.is-confirmed,
+  :root:not([data-theme='light']) .cr-outcome.is-confirmed { --cr-c: #ff8a9a; }
+  :root:not([data-theme='light']) .cr-status.is-not_confirmed,
+  :root:not([data-theme='light']) .cr-outcome.is-not_confirmed { --cr-c: #5fd3a6; }
+  :root:not([data-theme='light']) .cr-status.is-rejected,
+  :root:not([data-theme='light']) .cr-outcome.is-rejected { --cr-c: #b4c0d0; }
+}

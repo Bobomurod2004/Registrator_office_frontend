@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import DashboardLayout from '@/components/DashboardLayout.vue'
 import RequestStatusTracker from '@/components/RequestStatusTracker.vue'
 import MyKpiPanel from '@/components/MyKpiPanel.vue'
+import PersonSearchDrawer from '@/components/PersonSearchDrawer.vue'
 import { extractApiError, isForbidden } from '@/services/http'
 import { useAuthStore } from '@/stores/auth'
 import { useRequestsStore, type RequestDetail, type RequestListItem, type RequestStatus } from '@/stores/requests'
@@ -19,6 +20,7 @@ const staffStore = useStaffStore()
 const rolesStore = useRolesStore()
 const localeStore = useLocaleStore()
 const m = computed(() => localeStore.m)
+const showPersonSearch = ref(false)
 
 type Filter = 'all' | RequestStatus
 const filter = ref<Filter>('all')
@@ -401,8 +403,16 @@ function documentLanguageLabel(lang: string) {
   <DashboardLayout>
     <!-- ===== Xodim ko'rinishi ===== -->
     <template v-if="authStore.isStaff">
-      <h1>{{ m.appeals.staffTitle }}</h1>
-      <p class="services-subtitle">{{ m.appeals.staffSubtitle }}</p>
+      <div class="info-header-row">
+        <div>
+          <h1>{{ m.appeals.staffTitle }}</h1>
+          <p class="services-subtitle">{{ m.appeals.staffSubtitle }}</p>
+        </div>
+        <button type="button" class="appeal-btn person-search-open" @click="showPersonSearch = true">
+          {{ m.person.openBtn }}
+        </button>
+      </div>
+      <PersonSearchDrawer :open="showPersonSearch" @close="showPersonSearch = false" />
 
       <!-- SuperAdmin odatda murojaatlarga shaxsan javob beradigan (operator)
            xodim emas, shu sabab uning shaxsiy `my-kpi` paneli har doim bo'sh

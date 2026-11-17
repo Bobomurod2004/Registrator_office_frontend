@@ -4,7 +4,12 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useLocaleStore } from '@/stores/locale'
 import { extractApiError } from '@/services/http'
-import { isTelegramState, linkTelegramFromHemis, type TelegramLinkResult } from '@/services/telegramLink'
+import {
+  isTelegramState,
+  linkTelegramFromHemis,
+  telegramFlowFromPath,
+  type TelegramLinkResult,
+} from '@/services/telegramLink'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -28,7 +33,9 @@ async function runTelegramLink() {
     telegramResult.value = { ok: false, detail: query.get('error') ?? '', botUrl: null }
     return
   }
-  telegramResult.value = await linkTelegramFromHemis(code, query.get('state') ?? '')
+  // Qaysi callback yo'li orqali kelgani (talaba yoki xodim/o'qituvchi) backend endpoint'ini belgilaydi.
+  const flow = telegramFlowFromPath(window.location.pathname)
+  telegramResult.value = await linkTelegramFromHemis(code, query.get('state') ?? '', flow)
 }
 
 function telegramErrorText(result: Extract<TelegramLinkResult, { ok: false }>): string {

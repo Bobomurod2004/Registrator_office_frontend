@@ -1,0 +1,743 @@
+/* Rahbariyatga murojaatlar paneli (leadership-appeals). Ranglar --dash-* tokenlaridan;
+   yorug'/qorong'i tema avtomatik. Umumiy klasslar (.appeal-card, .appeal-btn, .field, ...)
+   style.css'da — bu yerda faqat shu modulga xos qoidalar. */
+
+.lap-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 16px;
+}
+
+.lap-filters .lap-search {
+  grid-column: span 2;
+}
+
+.lap-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dash-text-primary);
+  cursor: pointer;
+}
+
+.lap-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lap-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.lap-card.is-open {
+  border-color: var(--dash-blue);
+}
+
+.lap-card-head {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+.lap-card-head:hover {
+  background: var(--dash-surface-soft);
+}
+
+.lap-card-main,
+.lap-card-side {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.lap-card-side {
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+
+.lap-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--dash-blue);
+  letter-spacing: 0.04em;
+}
+
+.lap-subject {
+  font-size: 15px;
+  color: var(--dash-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.lap-meta {
+  font-size: 12px;
+  color: var(--dash-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.lap-status {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: #475569;
+  background: rgba(100, 116, 139, 0.14);
+}
+
+.lap-status.is-new {
+  color: #2f6dff;
+  background: rgba(47, 109, 255, 0.12);
+}
+
+.lap-status.is-in_review {
+  color: #b86a00;
+  background: rgba(240, 144, 10, 0.16);
+}
+
+.lap-status.is-answered {
+  color: #13805a;
+  background: rgba(19, 128, 90, 0.14);
+}
+
+.lap-status.is-closed {
+  color: #475569;
+  background: rgba(100, 116, 139, 0.18);
+}
+
+.lap-status.is-rejected {
+  color: #c2334c;
+  background: rgba(224, 64, 90, 0.12);
+}
+
+:root[data-theme='dark'] .lap-status.is-new { color: #7fa7ff; }
+:root[data-theme='dark'] .lap-status.is-in_review { color: #f5b04e; }
+:root[data-theme='dark'] .lap-status.is-answered { color: #5fd3a6; }
+:root[data-theme='dark'] .lap-status.is-closed { color: #b4c0d0; }
+:root[data-theme='dark'] .lap-status.is-rejected { color: #ff8a9a; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .lap-status.is-new { color: #7fa7ff; }
+  :root:not([data-theme='light']) .lap-status.is-in_review { color: #f5b04e; }
+  :root:not([data-theme='light']) .lap-status.is-answered { color: #5fd3a6; }
+  :root:not([data-theme='light']) .lap-status.is-closed { color: #b4c0d0; }
+  :root:not([data-theme='light']) .lap-status.is-rejected { color: #ff8a9a; }
+}
+
+/* --- Tafsilot --- */
+.lap-detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 18px 20px;
+  border-top: 1px solid var(--dash-border);
+  background: var(--dash-surface-soft);
+}
+
+.lap-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.lap-detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--dash-surface);
+  border: 1px solid var(--dash-border);
+}
+
+.lap-detail-item span {
+  font-size: 11.5px;
+  color: var(--dash-text-secondary);
+}
+
+.lap-detail-item strong {
+  font-size: 13px;
+  color: var(--dash-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.lap-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lap-block h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--dash-text-primary);
+}
+
+.lap-kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 14px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.lap-kv dt {
+  color: var(--dash-text-secondary);
+  font-weight: 600;
+}
+
+.lap-kv dd {
+  margin: 0;
+  color: var(--dash-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.lap-verified {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #13805a;
+  background: rgba(19, 128, 90, 0.12);
+}
+
+.lap-notice {
+  margin: 0;
+  font-size: 13px;
+  color: var(--dash-text-secondary);
+}
+
+/* Murojaat matni va javob — HTML emas, faqat matn (white-space: pre-wrap). */
+.lap-text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--dash-text-primary);
+}
+
+.lap-attachments {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lap-attachments li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.lap-att-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dash-text-primary);
+  overflow-wrap: anywhere;
+  flex: 1 1 200px;
+}
+
+.lap-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.lap-assign {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+  margin-top: 4px;
+}
+
+.lap-assign .field {
+  flex: 1 1 260px;
+}
+
+.lap-response {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--dash-surface);
+  border: 1px solid var(--dash-border);
+}
+
+.lap-response-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lap-textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 84px;
+}
+
+.lap-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(224, 64, 90, 0.35);
+  background: rgba(224, 64, 90, 0.07);
+}
+
+.lap-confirm strong {
+  color: #c2334c;
+  font-size: 13.5px;
+}
+
+.lap-confirm p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--dash-text-secondary);
+}
+
+.lap-notes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lap-notes li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--dash-surface);
+  border: 1px solid var(--dash-border);
+}
+
+.lap-ok {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #13805a;
+}
+
+/* --- Rahbarlar (SuperAdmin) --- */
+.lap-recipients {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.lap-recipients-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.lap-recipient-form h3 {
+  margin: 0;
+  font-size: 15px;
+  color: var(--dash-text-primary);
+}
+
+.lap-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.lap-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.lap-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--dash-blue);
+  background: rgba(47, 109, 255, 0.1);
+}
+
+.lap-chip-remove {
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.lap-chip-remove:hover {
+  background: rgba(47, 109, 255, 0.18);
+}
+
+.lap-candidates {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.lap-candidates li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--dash-border);
+  background: var(--dash-surface);
+  color: var(--dash-text-primary);
+  font-size: 13px;
+}
+
+.lap-candidates li > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* --- Statistika --- */
+.lap-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.lap-stat-total {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 18px;
+  border-radius: 14px;
+  border: 1px solid var(--dash-border);
+  background: var(--dash-surface);
+}
+
+.lap-stat-total span {
+  font-size: 12.5px;
+  color: var(--dash-text-secondary);
+  font-weight: 600;
+}
+
+.lap-stat-total strong {
+  font-size: 30px;
+  color: var(--dash-blue);
+}
+
+.lap-status-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.lap-status-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--dash-border);
+  background: var(--dash-surface);
+}
+
+.lap-status-card strong {
+  font-size: 22px;
+  color: var(--dash-text-primary);
+}
+
+.lap-bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lap-bars li {
+  display: grid;
+  grid-template-columns: minmax(120px, 220px) 1fr 48px;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--dash-text-primary);
+}
+
+.lap-bar-track {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--dash-surface-soft);
+  overflow: hidden;
+}
+
+.lap-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--dash-blue) 0%, var(--dash-cyan) 100%);
+  transition: width 0.4s ease;
+}
+
+.lap-bar-value {
+  text-align: right;
+  font-weight: 700;
+}
+
+.lap-months {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 180px;
+  padding-top: 8px;
+  overflow-x: auto;
+}
+
+.lap-month {
+  flex: 0 0 34px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.lap-month-bar {
+  width: 100%;
+  border-radius: 8px 8px 4px 4px;
+  background: linear-gradient(180deg, var(--dash-cyan) 0%, var(--dash-blue) 100%);
+  min-height: 4px;
+}
+
+.lap-month-label,
+.lap-month-value {
+  font-size: 11px;
+  color: var(--dash-text-secondary);
+}
+
+@media (max-width: 640px) {
+  .lap-filters .lap-search {
+    grid-column: auto;
+  }
+
+  .lap-card-head {
+    flex-direction: column;
+  }
+
+  .lap-card-side {
+    align-items: flex-start;
+  }
+
+  .lap-bars li {
+    grid-template-columns: 1fr 40px;
+  }
+
+  .lap-bars li .lap-bar-track {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
+/* --- Ilovalar: ko'rish, javob fayllari --- */
+.lap-att-row {
+  padding: 8px 10px;
+  border: 1px solid var(--dash-border);
+  border-radius: 10px;
+  background: var(--dash-surface);
+}
+
+.lap-att-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 9px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: #64748b;
+}
+
+.lap-att-icon.is-pdf { background: #e0405a; }
+.lap-att-icon.is-image { background: #2f6dff; }
+
+.lap-att-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 180px;
+}
+
+.lap-att-info .lap-att-name {
+  flex: none;
+}
+
+.lap-sent-files {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lap-file-input {
+  display: none;
+}
+
+.lap-pending-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lap-pending-files li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 1px dashed var(--dash-border);
+  border-radius: 9px;
+}
+
+.lap-pending-remove,
+.lap-preview-close {
+  border: none;
+  background: transparent;
+  color: var(--dash-text-secondary);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.lap-pending-remove:hover,
+.lap-preview-close:hover {
+  color: #e0405a;
+  background: rgba(224, 64, 90, 0.1);
+}
+
+.lap-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(8, 14, 24, 0.72);
+}
+
+.lap-preview {
+  display: flex;
+  flex-direction: column;
+  width: min(960px, 100%);
+  max-height: calc(100vh - 48px);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--dash-surface);
+  border: 1px solid var(--dash-border);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+}
+
+.lap-preview-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--dash-border);
+}
+
+.lap-preview-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  color: var(--dash-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.lap-preview-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  background: var(--dash-surface-soft);
+}
+
+.lap-preview-body img {
+  max-width: 100%;
+  max-height: calc(100vh - 140px);
+  object-fit: contain;
+  display: block;
+}
+
+.lap-preview-body iframe {
+  width: 100%;
+  height: calc(100vh - 140px);
+  border: none;
+  background: #fff;
+}
+
+@media (max-width: 640px) {
+  .lap-preview-backdrop { padding: 0; }
+  .lap-preview { max-height: 100vh; height: 100vh; border-radius: 0; }
+}
+
+.lap-list-files {
+  margin-left: 6px;
+  font-weight: 600;
+  color: var(--dash-blue);
+  white-space: nowrap;
+}
